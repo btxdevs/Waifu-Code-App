@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A desktop AI companion with a 3D avatar — chat, voice, and a permission-gated coding agent, all running on your own machine.
+  A desktop AI companion with a 3D avatar — chat, voice, and a permission-gated coding agent. Speech, memory, and all your data stay on your machine; bring your own LLM (any OpenAI-compatible API, cloud or local).
 </p>
 
 <p align="center">
