@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Waifu Code</title>
+    <!--
+      CSP intentionally permissive: this renderer is loaded over file:// by pywebview, and
+      both the pywebview API bridge (window.pywebview.api) and our app shim are injected
+      inline at runtime. A strict script-src 'self' blocks those injections and leaves the page
+      blank. The renderer only loads local assets — there is no remote content to defend against.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ws://127.0.0.1:* ws://localhost:*;" />
+    <!--
+      App API stub. Defined inline BEFORE the React bundle so window.app is
+      always present when components mount and call useEffect. The stub:
+        - Holds chat-event listeners in a Set so `onChatEvent` is safe immediately.
+        - Queues reply/sendChat/notifyChatReady/confirm calls until pywebview's API is
+          ready (the `pywebviewready` event fires after the bundle is parsed), then
+          drains the queue and forwards subsequent calls directly.
+      Also defines `window.__chatPush(envJson)` — the bridge calls this from Python to
+      stream Chat.* envelopes into the renderer.
+    -->
+    <script>
+      (function () {
+        var listeners = new Set();
+        var apiReady = false;
+        var api = null;
+        var pending = [];
+
+        // Keep refs to the originals BEFORE we patch them, otherwise the forwardLog path
+        // would recurse into itself when we use console internally.
+        var origConsole = {
+          log:   console.log.bind(console),
+          info:  console.info.bind(console),
+          warn:  console.warn.bind(console),
+          error: console.error.bind(console),
+          debug: (console.debug || console.log).bind(console),
+        };
+
+        function callSync(method, args) {
+          if (apiReady) {
+            var fn = api && api[method];
+            if (typeof fn !== 'function') {
+              // Use the ORIGINAL console.error (the patched one would just funnel right
+              // back through api.log which is itself probably the missing method).
+              origConsole.error('[app-stub] api.' + method + ' is not exposed; payload dropped:', args);
+              return;
+            }
+            try { fn.apply(api, args); }
+            catch (e) { origConsole.error('[app-stub]', method, 'threw:', e); }
+          } else {
+            pending.push([method, args]);
+          }
+        }
+        function callAsync(method, args) {
+          if (apiReady) {
+            var fn = api && api[method];
+            if (typeof fn !== 'function') {
+              origConsole.error('[app-stub] api.' + method + ' is not exposed');
+              return Promise.reject(new Error('api.' + method + ' not exposed'));
+            }
+            try { return Promise.resolve(fn.apply(api, args)); }
+            catch (e) { return Promise.reject(e); }
+          }
+          return new Promise(function (resolve, reject) {
+            pending.push([method, args, resolve, reject]);
+          });
+        }
+
+        // -------- Forward renderer console + uncaught errors into Python's log file --------
+        function safeStringify(v) {
+          if (v instanceof Error) return v.stack || (v.name + ': ' + v.message);
+          if (typeof v === 'string') return v;
+          try { return JSON.stringify(v); }
+          catch (_) { try { return String(v); } catch (__) { return '[unstringifiable]'; } }
+        }
+        function forwardLog(level, args) {
+          var parts = [];
+          for (var i = 0; i < args.length; i++) parts.push(safeStringify(args[i]));
+          callSync('log', [level, parts.join(' ')]);
+        }
+        ['log', 'info', 'warn', 'error', 'debug'].forEach(function (level) {
+          console[level] = function () {
+            origConsole[level].apply(null, arguments);
+            try { forwardLog(level, arguments); } catch (_) { /* never let logging crash the page */ }
+          };
+        });
+        window.addEventListener('error', function (e) {
+          var msg = (e.message || 'error') + ' @ ' + (e.filename || '?') + ':' + (e.lineno || 0) + ':' + (e.colno || 0);
+          if (e.error && e.error.stack) msg += '\n' + e.error.stack;
+          forwardLog('error', [msg]);
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e.reason;
+          forwardLog('error', ['Unhandled rejection: ' + safeStringify(r)]);
+        });
+
+        // -------- File drop (.wcc character bundles) --------
+        // dragover must preventDefault or the browser never allows a drop. The drop
+        // itself is handled PYTHON-side (Bridge._on_chat_file_drop via pywebview's DOM
+        // events — the only way to get the dropped file's full path); the drop fallback
+        // here just stops the browser from navigating to the file if that handler
+        // isn't registered yet.
+        document.addEventListener('dragover', function (e) { e.preventDefault(); });
+        document.addEventListener('drop', function (e) { e.preventDefault(); });
+
+        window.app = {
+          // WS-forwarding: anything traveling to Unity goes through reply/sendChat.
+          reply: function (type, payload) { callSync('reply', [type, payload]); },
+          sendChat: function (type, payload) { callSync('send_chat', [type, payload]); },
+          // Renderer ↔ app-local methods (no Unity round-trip). These are
+          // the canonical surface for UI ↔ Python interaction; do not invent new
+          // Chat.* envelope types for things that never leave the app.
+          notifyChatReady: function () { callSync('notify_chat_ready', []); },
+          startRecording: function () { callSync('start_recording', []); },
+          stopRecording: function () { callSync('stop_recording', []); },
+          setHandsFree: function (enabled) { callSync('set_hands_free', [enabled]); },
+          setAutoSubmit: function (enabled) { callSync('set_auto_submit', [enabled]); },
+          setWakeWord: function (enabled, phrase) { callSync('set_wake_word', [enabled, phrase]); },
+          clearVoiceTranscript: function () { callSync('clear_voice_transcript', []); },
+          getConfig: function () { return callAsync('get_config', []); },
+          saveConfig: function (data) { return callAsync('save_config', [data]); },
+          pickDirectory: function (current) { return callAsync('pick_directory', [current]); },
+          pickVrmFile: function (current) { return callAsync('pick_vrm_file', [current]); },
+          pickAudioFile: function (current) { return callAsync('pick_audio_file', [current]); },
+          pickProfileImage: function (current) { return callAsync('pick_profile_image', [current]); },
+          exportCharacter: function (id, name) { return callAsync('export_character', [id, name]); },
+          importCharacter: function () { return callAsync('import_character', []); },
+          pickAttachments: function () { return callAsync('pick_attachments', []); },
+          pasteAttachments: function () { return callAsync('read_clipboard_files', []); },
+          storeClipboardImage: function (b64, ext) { return callAsync('store_clipboard_image', [b64, ext]); },
+          readImageDataUrl: function (path) { return callAsync('read_image_data_url', [path]); },
+          readModelScreenshot: function (modelPath, filename) { return callAsync('read_model_screenshot', [modelPath, filename]); },
+          openWorkspaceFolder: function () { return callAsync('open_workspace_folder', []); },
+          openPlayer: function () { return callAsync('open_player', []); },
+          minimizeWindow: function () { callSync('minimize_window', []); },
+          maximizeWindow: function () { callSync('maximize_window', []); },
+          restoreWindow: function () { callSync('restore_window', []); },
+          setAlwaysOnTop: function (on) { callSync('set_always_on_top', [on]); },
+          closeWindow: function () { callSync('close_window', []); },
+          confirm: function (opts) { return callAsync('confirm', [opts]); },
+          onChatEvent: function (listener) {
+            listeners.add(listener);
+            return function () { listeners.delete(listener); };
+          },
+        };
+
+        window.__chatPush = function (envJson) {
+          var env;
+          try { env = JSON.parse(envJson); }
+          catch (e) { origConsole.error('[stub] __chatPush bad JSON', e); return; }
+          listeners.forEach(function (l) {
+            try { l(env); } catch (err) { origConsole.error('[stub] listener threw', err); }
+          });
+        };
+
+        // pywebview injects its bridge in two phases: `api.js` sets window.pywebview.api
+        // to an empty {}, then `finish.js` calls _createApi(funcList) to attach methods
+        // and fires `pywebviewready`. Listen for that event — it's the only moment the
+        // API is guaranteed to be populated.
+        window.addEventListener('pywebviewready', function () {
+          api = window.pywebview.api;
+          apiReady = true;
+          pending.forEach(function (call) {
+            var method = call[0], args = call[1], resolve = call[2], reject = call[3];
+            try {
+              var fn = api && api[method];
+              if (typeof fn !== 'function') throw new Error('api.' + method + ' not exposed');
+              var r = fn.apply(api, args);
+              if (resolve) (r && typeof r.then === 'function' ? r.then(resolve, reject) : resolve(r));
+            } catch (e) {
+              if (reject) reject(e);
+              else origConsole.error('[stub] replay failed', method, e);
+            }
+          });
+          pending.length = 0;
+        }, { once: true });
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

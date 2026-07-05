@@ -1,0 +1,52 @@
+pywebview>=5.0
+websocket-client>=1.7
+
+# STT — sherpa-onnx (https://github.com/k2-fsa/sherpa-onnx) streaming Zipformer
+# for live transcription + the bundled Silero VAD for barge-in detection in
+# hands-free mode. Bundles its own ONNX Runtime, so no separate `onnxruntime`
+# pin needed. The STT bundle is auto-downloaded from HuggingFace into
+# CompanionApp/models/ on first run via huggingface_hub; silero_vad.onnx is
+# fetched on demand from the sherpa-onnx GitHub release.
+sherpa-onnx>=1.10
+huggingface_hub>=0.20
+numpy<2
+
+# Standalone ONNX Runtime used by the pocket-TTS engine (python/pocket_tts_onnx.py) and
+# rapidocr. Pinned to 1.24.4 to MATCH the onnxruntime build sherpa-onnx embeds, so the frozen
+# build ships a single consistent onnxruntime instead of two different versions side by side.
+onnxruntime==1.24.4
+
+# Mic capture (PortAudio Python bindings — ships precompiled wheels for Windows).
+sounddevice>=0.4
+
+# TTS — pocket-tts-onnx (KevinAHM/pocket-tts-onnx) for local synthesis. Models are auto-
+# downloaded into CompanionApp/models/ on first start (only the non-24l language bundles:
+# english_2026-04, german, italian, portuguese, spanish). The ElevenLabs-compatible
+# provider path uses httpx (pulled in transitively by huggingface_hub) instead.
+soundfile>=0.12
+sentencepiece>=0.2
+safetensors>=0.4
+scipy>=1.10
+
+# WebSearch — ddgs (https://github.com/deedy5/ddgs), the renamed duckduckgo_search. A pure-Python
+# metasearch library that aggregates public engines (DuckDuckGo, Brave, Google, Startpage, Mojeek…)
+# in-process — no instance to host and no API keys. MIT-licensed.
+ddgs>=9.0
+
+# WebFetch — fetch a page (httpx, browser UA) and convert HTML→markdown locally (replaced the Jina
+# Reader round-trip). markdownify is the Python analog of the JS WebFetch's turndown; BeautifulSoup
+# does the pre-clean (strip nav/scripts/chrome) before conversion. See chat/tools/web_cache.py.
+httpx>=0.28
+markdownify>=1.0
+beautifulsoup4>=4.12
+
+# OCR — rapidocr-onnxruntime (https://github.com/RapidAI/RapidOCR). Used by the read_image_ocr
+# tool when the LLM backend isn't vision-capable. ONNX-Runtime only, ~50 MB models lazy-loaded
+# on first Ocr.Extract request. Pillow is the de facto image decoder (PNG/JPG/GIF/WEBP/BMP).
+rapidocr-onnxruntime>=1.3
+Pillow>=10.0
+
+# Screenshot tool (Windows) — pywin32 for robust per-window capture via PrintWindow
+# (PW_RENDERFULLCONTENT), which grabs a window's real contents even when occluded or minimized,
+# and for window enumeration. Fullscreen/region capture uses Pillow's ImageGrab (no extra dep).
+pywin32>=306

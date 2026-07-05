@@ -1,0 +1,636 @@
+/* ============================================================================
+   Home / landing page — the picker shown when the app opens. No chat is
+   opened until the user picks a character (new chat) or a saved chat (resume).
+   ========================================================================= */
+
+/* ----------------------------------------------------------------------------
+   Shared widgets reused on the home page. These same classes are also styled in
+   chat.css (.error-banner) and sidebar.css (.chat-item*, .new-chat-btn) for their
+   own contexts; the rules are intentionally duplicated here so the home page
+   doesn't depend on those partials. Keep them in sync if you change the look.
+   ---------------------------------------------------------------------------- */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(140, 47, 47, 0.25);
+  border-top: 1px solid rgba(140, 47, 47, 0.6);
+  border-bottom: 1px solid rgba(140, 47, 47, 0.6);
+  font-size: 12px;
+}
+.error-banner .error-text {
+  flex: 1;
+  color: #ffd7d7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.error-banner .error-dismiss {
+  background: transparent;
+  border: none;
+  color: #ffd7d7;
+  padding: 0 4px;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.error-banner .error-dismiss:hover { opacity: 1; }
+
+.new-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, var(--neon-1), var(--neon-2));
+  color: #000;
+  border: 1px solid var(--neon-1);
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(var(--neon-glow), 0.85), 0 0 12px rgba(var(--neon-glow), 0.55);
+  transition: box-shadow 0.15s ease, filter 0.15s ease;
+}
+.new-chat-btn:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 0 8px rgba(var(--neon-glow), 1), 0 0 18px rgba(var(--neon-glow), 0.75);
+}
+.new-chat-btn:disabled,
+.home-char-start:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+  filter: none;
+  cursor: not-allowed;
+}
+
+.chat-item {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+}
+.chat-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.chat-item.active {
+  background: rgba(var(--neon-glow), 0.12);
+  border-color: var(--accent);
+}
+
+.chat-item-info {
+  flex: 1;
+  min-width: 0;
+  margin-right: 8px;
+}
+
+.chat-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 3px;
+}
+
+.chat-item-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-item-time {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.chat-item-snippet {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.delete-chat-btn {
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-radius: 4px;
+  padding: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chat-item:hover .delete-chat-btn {
+  opacity: 1;
+}
+.delete-chat-btn:hover {
+  background: var(--deny);
+  color: white;
+}
+
+.home-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+}
+
+/* Whole-page column: Characters keeps its natural height up top; Recent chats fills the rest
+   and scrolls internally (the list scrolls, not the page). */
+.home-body {
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.home-section-characters {
+  flex: 0 0 auto;
+}
+
+/* The saves section becomes the flexible region; its inner list (.home-saves) is what scrolls. */
+.home-section-saves {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.home-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* "Drop to import" overlay shown while a file is dragged over the window. Purely
+   visual: pointer-events none so the drop still lands on the page underneath (the
+   Python-side handler needs to receive it). Below the titlebar (z 130). */
+.home-drop-overlay {
+  position: fixed;
+  inset: 30px 0 0 0; /* below the 30px custom titlebar */
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.home-drop-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  border: 2px dashed var(--neon-1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.home-drop-box svg {
+  color: var(--neon-1);
+}
+
+/* Search field — sits on its own row below the section title. */
+.home-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: 100%;
+  margin-bottom: 12px;
+}
+.home-search-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+/* `input.` prefix so this beats the global `input[type="text"]` rule (an attribute selector
+   outranks a bare class), otherwise its padding overrides our left inset and the placeholder
+   slides under the magnifying-glass icon. */
+input.home-search-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 26px 6px 28px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.home-search-input::placeholder { color: var(--text-dim); }
+.home-search-input:focus { border-color: var(--primary); }
+.home-search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+.home-search-clear:hover { color: var(--text); }
+
+/* Per-chat work folder line under the snippet. */
+.chat-item-folder {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.chat-item-folder svg { flex: 0 0 auto; opacity: 0.8; }
+.chat-item-folder-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-section h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Horizontal scroller: cards keep a fixed width and overflow to a scrollbar instead of wrapping. */
+.home-char-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px; /* room for the scrollbar so it doesn't overlap the cards */
+}
+
+.home-char-card {
+  position: relative; /* anchors the corner ⋮ menu */
+  flex: 0 0 160px;
+  aspect-ratio: 1 / 1; /* always a square card */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px;
+  transition: border-color 0.15s ease;
+  text-align: center;
+}
+.home-char-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* ⋮ options button pinned to the card's top-right corner + its dropdown menu. */
+.home-char-menu-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.home-char-menu-btn:hover,
+.home-char-menu-btn[aria-expanded="true"] {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+.home-char-menu {
+  position: absolute;
+  top: 30px;
+  right: 6px;
+  z-index: 5;
+  min-width: 110px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.home-char-menu button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 9px;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.home-char-menu button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+.home-char-menu button.danger:hover {
+  color: white;
+  background: var(--deny);
+}
+
+.home-char-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: linear-gradient(135deg, var(--neon-1), var(--neon-2));
+  color: #000;
+  border: 1px solid var(--neon-1);
+  border-radius: 5px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(var(--neon-glow), 0.85), 0 0 12px rgba(var(--neon-glow), 0.55);
+  transition: box-shadow 0.15s ease, filter 0.15s ease;
+  margin-top: 2px;
+}
+.home-char-start:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 0 8px rgba(var(--neon-glow), 1), 0 0 18px rgba(var(--neon-glow), 0.75);
+}
+
+.home-char-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--accent);
+  overflow: hidden;
+  flex: none;
+}
+.home-char-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.home-char-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.home-saves {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* room so the last row's hover/delete button isn't flush against the scroll edge */
+  padding-right: 4px;
+}
+
+.home-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 16px;
+  border: 1px dashed var(--panel-border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+/* ============================================================================
+   Unity-disconnected overlay — covers the whole window until the WS reconnects.
+   ========================================================================= */
+
+.connection-overlay {
+  position: fixed;
+  inset: 0;
+  /* below the titlebar (z 130) so the window stays draggable/closable while reconnecting */
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 16, 19, 0.82);
+  backdrop-filter: blur(2px);
+  animation: fadeIn 0.15s ease-out;
+}
+
+.connection-overlay-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 320px;
+  padding: 28px 24px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.connection-overlay-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+
+.connection-overlay-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.connection-overlay-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.connection-overlay-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* Self-contained copy of the new-chat modal's primary button (neon gradient, black text)
+   plus icon/label layout. Not built on .dialog-btn — that base class flips text to a light
+   colour on hover, which we don't want here; black text stays put through hover. */
+.connection-overlay-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 6px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #000;
+  background: linear-gradient(135deg, var(--neon-1), var(--neon-2));
+  border: 1px solid var(--neon-1);
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(var(--neon-glow), 0.85), 0 0 12px rgba(var(--neon-glow), 0.55);
+  transition: box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.connection-overlay-button:hover:not(:disabled) {
+  color: #000;
+  filter: brightness(1.06);
+  box-shadow: 0 0 8px rgba(var(--neon-glow), 1), 0 0 18px rgba(var(--neon-glow), 0.75);
+}
+
+.connection-overlay-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  filter: none;
+}
+
+.connection-overlay-note {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* Chat-loading overlay: per-subsystem readiness checklist (model / TTS / STT). */
+.chat-loading-stages {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+}
+
+.chat-loading-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.chat-loading-stage.done {
+  color: var(--text);
+}
+
+.chat-loading-stage.done svg {
+  color: #4caf50;
+}
+
+/* First-run model-download progress shown under the readiness checklist. */
+.chat-loading-download {
+  width: 100%;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.chat-loading-download-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.chat-loading-download-pct {
+  margin-left: auto;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-loading-progress {
+  position: relative;
+  height: 6px;
+  width: 100%;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.chat-loading-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+/* No known total yet: a sliding sweep instead of a fixed-width fill. */
+.chat-loading-progress.indeterminate .chat-loading-progress-fill {
+  width: 35%;
+  animation: chatDownloadSweep 1.1s ease-in-out infinite;
+}
+
+@keyframes chatDownloadSweep {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+.chat-loading-download-bytes {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* `@keyframes fadeIn` / `slideDown` live in base.css (shared across partials). */
+

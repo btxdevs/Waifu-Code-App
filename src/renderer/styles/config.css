@@ -1,0 +1,331 @@
+/* ============================================================================
+ * Settings panel (ConfigView). Lives in the same window as the chat surface,
+ * swapped in via showConfig state. Pre-wrapped scroll container so the user
+ * can scroll through a tall form even when the chat window is narrow.
+ * ============================================================================ */
+
+.config-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.config-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border);
+}
+.config-header h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.config-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Tab bar under the settings header. */
+.config-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border);
+}
+.config-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.config-tab:hover { color: var(--text); }
+.config-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.config-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.config-body.config-loading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+}
+
+.config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+}
+.config-section h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.config-field > span {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+/* Label row with a trailing action (e.g. a remove button) for a configured voice. */
+.config-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.config-field-head > span {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.config-field input[type='text'],
+.config-field input[type='password'],
+.config-field input[type='number'],
+.config-field select {
+  width: 100%;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.config-field input:focus,
+.config-field select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.config-field textarea {
+  width: 100%;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.config-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.config-hint {
+  font-size: 10px !important;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+.config-hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Required-field marker on editor labels. */
+.config-required {
+  color: var(--deny);
+}
+
+/* Character profile-picture preview in the editor (mirrors .home-char-avatar). */
+.config-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--accent);
+  overflow: hidden;
+  flex: none;
+}
+.config-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.config-row-split {
+  align-items: flex-end;
+}
+.config-row-split > .config-field {
+  flex: 1;
+}
+.config-field-narrow {
+  max-width: 200px;
+}
+
+.config-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  flex: 1;
+}
+.config-checkbox input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+.config-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.config-list-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.config-list-row input {
+  flex: 1;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.config-empty {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 8px 0;
+}
+
+.config-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px dashed var(--panel-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  align-self: flex-start;
+}
+.config-add:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.config-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--neon-1), var(--neon-2));
+  color: #000;
+  border: 1px solid var(--neon-1);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 0 5px rgba(var(--neon-glow), 0.85), 0 0 12px rgba(var(--neon-glow), 0.55);
+  transition: box-shadow 0.15s ease, filter 0.15s ease;
+}
+.config-save:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 0 8px rgba(var(--neon-glow), 1), 0 0 18px rgba(var(--neon-glow), 0.75);
+}
+.config-save:disabled { opacity: 0.4; box-shadow: none; filter: none; cursor: not-allowed; }
+
+.config-saved {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.config-error {
+  font-size: 12px;
+  color: #f5a;
+  padding: 8px 12px;
+  background: rgba(255, 100, 150, 0.08);
+  border: 1px solid rgba(255, 100, 150, 0.25);
+  border-radius: 4px;
+}
+
+/* Generic icon button shared by the config panel + chat header. Small, square,
+ * borderless until hover. Used for back-arrow, browse-folder, hide-password,
+ * settings-cog, etc. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.icon-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--panel-border);
+}
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.icon-btn-danger:hover:not(:disabled) {
+  color: #f5a;
+  border-color: rgba(255, 100, 150, 0.35);
+}
+
+/* `.spin` + `@keyframes spin` live in base.css (shared). */
+

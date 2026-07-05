@@ -1,0 +1,88 @@
+{
+  "_README": "TEMPLATE. The live config is app.config.json (git-ignored, per-machine). The app runs entirely on code defaults if it's absent and writes its own when you change settings in the UI, so you only need to create one to override a default by hand. Copy this file to app.config.json and edit. The _*_comment fields document each setting and are ignored by the loader.",
+  "_user_name_comment": "Display name of the human user. Substituted into {{user}} tokens in character prompts (e.g. the initial scenario, character definition). Used to live on a Unity UserProfile asset.",
+  "user_name": "User",
+  "_unity_comment": "Connection to the Unity app. `port` is the loopback WebSocket port both sides use — it MUST match AppBridge.port in Unity (default 8770). `autostart`, when true, launches the Unity build as the app starts; `exePath` is the path to that build's .exe (only used when autostart is true) — absolute, or relative to the app's own folder (e.g. 'Waifu Code Player.exe' when the player sits beside the app, as in a packaged release). If the port is already in use (Unity already running) the autostart launch is skipped so it never spawns a duplicate.",
+  "unity": {
+    "port": 8770,
+    "autostart": false,
+    "exePath": "Waifu Code Player.exe"
+  },
+  "stt": {
+    "_comment": "Streaming speech-to-text (sherpa-onnx OnlineRecognizer + Silero VAD). Override any of these per-run with the matching APP_* env var (env wins over file wins over defaults). `model` is an alias listed in STT_MODEL_CONFIGS. Pick by accuracy → latency tradeoff: `nemotron-0.6b` (default — NVIDIA 600M-param Cache-Aware FastConformer-RNNT, ~250k hours training, native punct+caps, ~663 MB int8, best general English); `fast-conformer-1040ms` (NeMo 114M, broad training, ~138 MB int8, slightly less accurate); `fast-conformer-480ms` / `fast-conformer-80ms` (same family at lower latency for tighter loops); `streaming-zipformer-en` (Apache-2.0 fallback, LibriSpeech+GigaSpeech, ~360 MB int8); `streaming-zipformer-en-libri`, `streaming-zipformer-en-20M` (older / smaller). A bare `<owner>/<repo>` HF id also works if you also set `kind=transducer`. `endpointSilenceMs` is how much trailing silence after speech ends one utterance — drives hands-free segmentation. `handsFreeMode` keeps the mic open; the endpoint detector segments utterances and emits transcripts automatically. `autoSubmit` (only meaningful when handsFreeMode=true) submits each utterance directly as a chat message.",
+    "model": "nemotron-0.6b",
+    "kind": null,
+    "numThreads": 1,
+    "provider": "cpu",
+    "endpointSilenceMs": 5000,
+    "handsFreeMode": false,
+    "autoSubmit": true,
+    "_wakeWord_comment": "Optional 'okay google'-style wake phrase. When `wakeWordEnabled` is true, hands-free auto-submit only triggers for utterances spoken within `wakeWordArmSeconds` of the phrase being heard — outside that window the recognizer keeps listening but transcripts are dropped. Pick a phrase the AI is unlikely to say back to you (otherwise TTS playback bleeding into the mic can self-trigger).",
+    "wakeWordEnabled": false,
+    "wakeWord": "hey assistant",
+    "wakeWordArmSeconds": 15,
+    "_ttsEchoSuppression_comment": "Mutes the recognizer while Unity is playing TTS, so the AI's voice leaking from speakers into the mic doesn't get transcribed as the user. Turn this off (false) when there's no acoustic feedback path — headphones, separate-room mic, etc. — to keep the recognizer hot the whole time.",
+    "ttsEchoSuppression": true,
+    "_bargeInEnabled_comment": "When true, the VAD listens for user speech onset during TTS playback and interrupts the assistant the moment you start talking. Off by default — the VAD currently false-triggers on speaker bleed and on natural inter-sentence pauses (e.g. the gap between a pre-tool and post-tool response), which can latch the recognizer open and cause the assistant's voice to be transcribed back as user input. Turn on only if your mic isolation is good enough to avoid that. With it off you can still take the floor via push-to-talk.",
+    "bargeInEnabled": false
+  },
+  "_workspace_comment": "Filesystem sandbox + execution caps for tools that touch the disk (Read/Write/Edit/Glob/Grep/Bash/PowerShell). `allowedRoots` is the list of absolute paths the assistant may read/write under — every resolved path must live inside one of them or the call is rejected. First entry doubles as the cwd for relative paths. Leave empty to default to the folder containing the app. `allowedCommandPrefixes` / `deniedCommandPrefixes` short-circuit the approval modal for Bash/PowerShell: allow-listed prefixes run without a prompt, denied prefixes are refused outright. Dangerous patterns (rm -rf /, curl|sh, Invoke-Expression, etc.) are always blocked regardless. Leave empty to require approval on every shell command. `fullAccess` bypasses the sandbox entirely (any resolvable path, no approval prompts) — leave false unless you trust the model with your whole machine.",
+  "workspace": {
+    "allowedRoots": [],
+    "maxReadFileBytes": 5242880,
+    "maxGlobResults": 500,
+    "maxGrepResults": 500,
+    "defaultExecTimeoutSeconds": 15,
+    "ignoredDirectoryNames": [
+      ".git",
+      ".svn",
+      ".hg",
+      "node_modules",
+      ".venv",
+      "venv",
+      "__pycache__",
+      "Library",
+      "Temp",
+      "obj",
+      "bin",
+      ".idea",
+      ".vs",
+      ".vscode"
+    ],
+    "followSymlinks": false,
+    "allowedCommandPrefixes": [],
+    "deniedCommandPrefixes": [],
+    "fullAccess": false
+  },
+  "_webSearch_comment": "WebSearch tool config. Search runs through the `ddgs` metasearch library (Dux Distributed Global Search) in-process — no instance to host and no keys to set. `resultsPerCall` is how many results to fetch per query, `hardCapPage` caps the 1-indexed page the model may request, `requestTimeoutSeconds` is the per-request network timeout, `maxAttempts` retries transient backend failures. `textBackend` chooses which engines text search queries — 'auto', a single name, or a comma-delimited list from: bing, brave, duckduckgo, google, grokipedia, mojeek, startpage, yandex, yahoo, wikipedia (image search only supports bing/duckduckgo and always uses 'auto').",
+  "webSearch": {
+    "resultsPerCall": 8,
+    "hardCapPage": 10,
+    "requestTimeoutSeconds": 15,
+    "maxAttempts": 2,
+    "textBackend": "bing,brave,duckduckgo,google,startpage,yandex,yahoo"
+  },
+  "tts": {
+    "_comment": "Text-to-speech settings consumed by CompanionApp/python/tts.py. `provider` selects between the local pocket-tts ONNX model and an ElevenLabs-compatible HTTP endpoint. Voices are per-character now (see CharacterRecord.voices) — there is no global voice map.",
+    "provider": "pocket",
+    "pocket": {
+      "precision": "fp32",
+      "language": "english_2026-04",
+      "lsdSteps": 1,
+      "temperature": 0.7
+    },
+    "elevenlabs": {
+      "baseUrl": "http://127.0.0.1:8765/v1/text-to-speech",
+      "apiKey": "",
+      "model": "chatterbox-en",
+      "stability": 0.5,
+      "similarityBoost": 0.75,
+      "useSpeakerBoost": true,
+      "speed": 1.0,
+      "requestTimeoutSeconds": 30
+    }
+  },
+  "ui": {
+    "alwaysOnTop": true
+  }
+}

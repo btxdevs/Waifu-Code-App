@@ -1,0 +1,226 @@
+/* ============================================================================
+ * Centered modal dialog (NewChatDialog — new-chat / per-chat settings).
+ * Reuses the .config-field / .config-list / .config-add form atoms inside.
+ * ============================================================================ */
+
+.dialog-overlay {
+  position: fixed;
+  /* Start below the 30px titlebar (see .titlebar height) so the window controls stay usable. */
+  inset: 30px 0 0 0;
+  z-index: 200;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  background: rgba(15, 16, 19, 0.7);
+  animation: fadeIn 0.12s ease-out;
+}
+
+/* Fills the window (like the settings panel) rather than a centered card. */
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--panel);
+  overflow: hidden;
+  animation: fadeIn 0.14s ease-out;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.dialog-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dialog-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.dialog-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.dialog-btn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.dialog-btn.primary {
+  background: linear-gradient(135deg, var(--neon-1), var(--neon-2));
+  color: #000;
+  border-color: var(--neon-1);
+  box-shadow: 0 0 5px rgba(var(--neon-glow), 0.85), 0 0 12px rgba(var(--neon-glow), 0.55);
+  transition: box-shadow 0.15s ease, filter 0.15s ease;
+}
+.dialog-btn.primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 0 8px rgba(var(--neon-glow), 1), 0 0 18px rgba(var(--neon-glow), 0.75);
+}
+.dialog-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.dialog-btn.primary:disabled { box-shadow: none; filter: none; }
+
+.dialog-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-family: inherit;
+  background: var(--bg);
+  color: var(--text-dim);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+.dialog-toggle.on { color: var(--text); border-color: var(--accent); }
+.dialog-toggle:hover { color: var(--text); }
+
+/* ---- Outfit picker dialog (change the avatar's outfit as a user action) ---- */
+.outfit-grid {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 10px;
+}
+.outfit-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 132px;
+  padding: 8px 8px 9px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.outfit-card:hover { border-color: var(--accent); }
+.outfit-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+/* KK outfit screenshots are portrait; keep a fixed portrait frame and cover-crop into it. */
+.outfit-card-shot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112px;
+  height: 150px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-dim);
+  overflow: hidden;
+}
+.outfit-card-shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.outfit-card-name {
+  max-width: 100%;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.outfit-card-current {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #000;
+}
+/* Right-click hint, left-aligned in the footer (the buttons stay on the right). */
+.outfit-hint {
+  margin-right: auto;
+  align-self: center;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ---- Rebind dialog (chat whose character was deleted) ---- */
+.rebind-text {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.rebind-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rebind-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.rebind-item:hover {
+  border-color: var(--accent);
+}
+.rebind-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--accent);
+  overflow: hidden;
+  flex: none;
+}
+.rebind-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rebind-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

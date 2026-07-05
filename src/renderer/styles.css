@@ -1,0 +1,12 @@
+/* Renderer styles — split into feature partials under ./styles/. This barrel @imports them
+   in their original cascade order (base → modals → chat → sidebar → home → config → dialog),
+   so the result is byte-identical to the old single file. Import order matters: later rules win
+   ties, and the shared design tokens / resets in base.css must come first. Edit the partial that
+   owns a component, not this file. */
+@import './styles/base.css';     /* CSS variables, reset, scrollbars, window shell, titlebar, status */
+@import './styles/modals.css';   /* modal card, AskUserQuestion options, report (markdown) body */
+@import './styles/chat.css';     /* chat surface: header, bubbles, tool activity, todos, composer, mic */
+@import './styles/sidebar.css';  /* slide-out chat sidebar, character selector, chat-item rows */
+@import './styles/home.css';     /* home/landing page + connection & chat-loading overlays */
+@import './styles/config.css';   /* settings panel (ConfigView) + icon buttons */
+@import './styles/dialog.css';   /* centered modal dialog (NewChatDialog) */

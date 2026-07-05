@@ -1,0 +1,785 @@
+/* ---------- Chat window ---------- */
+
+.chat-app {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.chat-main-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border);
+}
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chat-header-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.chat-header-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+/* Compact icon toggle for the header (speaker on/off, and any future header toggles). */
+.icon-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.icon-toggle:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--panel-border);
+}
+.icon-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+.icon-toggle.on { color: var(--accent); }
+.icon-toggle.off { color: var(--text-dim); opacity: 0.7; }
+/* Wake-word "armed for command" pulse. Soft glow so the user can spot it
+   without it being loud — the live partial caption already shouts when audio
+   is being captured. */
+.icon-toggle.armed {
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 6px var(--accent);
+  animation: armed-pulse 1.2s ease-in-out infinite;
+}
+@keyframes armed-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--accent), 0 0 4px var(--accent); }
+  50%      { box-shadow: 0 0 0 1px var(--accent), 0 0 10px var(--accent); }
+}
+.restart-btn {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+  font-family: inherit;
+}
+.restart-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.restart-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* .error-banner is also duplicated in home.css (the home page shows the same banner).
+   Keep the two copies in sync. */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(140, 47, 47, 0.25);
+  border-top: 1px solid rgba(140, 47, 47, 0.6);
+  border-bottom: 1px solid rgba(140, 47, 47, 0.6);
+  font-size: 12px;
+}
+.error-banner .error-text {
+  flex: 1;
+  color: #ffd7d7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.error-banner .error-dismiss {
+  background: transparent;
+  border: none;
+  color: #ffd7d7;
+  padding: 0 4px;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.error-banner .error-dismiss:hover { opacity: 1; }
+
+.chat-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 0;
+}
+
+.bubble {
+  max-width: 92%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  font-size: 13px;
+  line-height: 1.45;
+  word-wrap: break-word;
+}
+.bubble.user {
+  align-self: flex-end;
+}
+.bubble.assistant {
+  align-self: flex-start;
+  background: rgba(var(--neon-glow), 0.12);
+  border-color: var(--accent);
+}
+.bubble.live {
+  /* Subtle highlight so it's obvious the assistant is still typing this one. */
+  box-shadow: 0 0 0 1px rgba(255, 210, 122, 0.35);
+}
+/* While editing, the bubble normally shrinks to its content width — which makes
+   the textarea a tiny sliver. Stretch it to the full row so the edit field is
+   usable regardless of how short the original message was. */
+.bubble.editing {
+  align-self: stretch;
+  max-width: none;
+  width: auto;
+}
+
+.bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.bubble-speaker {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.bubble-text {
+  white-space: pre-wrap;
+}
+/* Attachment chips — the ONE compact style for every attachment kind, shared by the
+   composer (with a remove button) and sent bubbles (image chips click-expand a preview). */
+.attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.bubble .attachment-chips {
+  margin-top: 6px;
+}
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  font-size: 11px;
+  color: var(--text);
+}
+.attachment-chip-clickable {
+  cursor: pointer;
+}
+.attachment-chip-clickable:hover,
+.attachment-chip-expanded {
+  background: rgba(255, 255, 255, 0.09);
+}
+.attachment-chip-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex: none;
+}
+.attachment-chip-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.attachment-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.attachment-chip-remove:hover {
+  background: var(--deny);
+  color: white;
+}
+/* Click-to-expand image preview — takes its own line under the chip row. */
+.attachment-preview {
+  flex-basis: 100%;
+  max-width: 260px;
+  max-height: 260px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  object-fit: contain;
+  display: block;
+}
+.bubble-reports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.report-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(255, 210, 122, 0.12);
+  color: #ffd27a;
+  border: 1px solid rgba(255, 210, 122, 0.3);
+  cursor: pointer;
+  font-family: inherit;
+}
+.report-chip:hover { background: rgba(255, 210, 122, 0.22); }
+
+/* Tool-activity rows: compact inline events between speech bubbles. Lower visual
+   weight than chat bubbles — they describe what the character did, not what was
+   spoken. Indented slightly so they read as "subordinate" to surrounding speech. */
+.tool-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 2px 8px;
+  font-size: 12px;
+  color: #b8b8b8;
+}
+.tool-activity-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  width: fit-content;
+  max-width: 100%;
+}
+.tool-activity-icon {
+  display: inline-flex;
+  color: #8a8a8a;
+}
+.tool-activity-text {
+  flex: 1;
+  word-break: break-word;
+}
+/* When the whole row IS the open-report button (ReportWrite case): reset native
+   button styles and reuse the warm "report" accent so the affordance reads as
+   clickable without having a separate chip below. */
+.tool-activity-clickable {
+  font-family: inherit;
+  font-size: inherit;
+  color: #ffd27a;
+  background: rgba(255, 210, 122, 0.10);
+  border: 1px solid rgba(255, 210, 122, 0.28);
+  cursor: pointer;
+  text-align: left;
+}
+.tool-activity-clickable:hover { background: rgba(255, 210, 122, 0.20); }
+.tool-activity-clickable .tool-activity-icon { color: #ffd27a; }
+
+/* User-action rows (e.g. a touch/caress): a USER interaction, NOT a tool the assistant ran.
+   Same visual style as the tool-activity rows, but aligned to the right. */
+.user-action {
+  display: flex;
+  flex-direction: column;
+  align-self: flex-end;
+  align-items: flex-end;
+  gap: 4px;
+  margin: 2px 8px 2px 0;
+  font-size: 12px;
+  color: #b8b8b8;
+}
+.user-action-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  width: fit-content;
+  max-width: 100%;
+}
+.user-action-icon {
+  display: inline-flex;
+  color: #8a8a8a;
+}
+.user-action-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+.bubble-todos {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  line-height: 1.35;
+}
+.todo-icon {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.todo-text { word-break: break-word; }
+.todo-pending .todo-icon { color: var(--text-dim); }
+.todo-pending .todo-text { color: var(--text-dim); }
+.todo-in_progress .todo-icon { color: var(--accent); }
+.todo-in_progress .todo-text { color: var(--text); font-weight: 600; }
+.todo-completed .todo-icon { color: var(--allow-strong); }
+.todo-completed .todo-text {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
+.bubble-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Edit affordance is quiet until the bubble is hovered — keeps the scroll-back
+   uncluttered. rewind stays always-visible since it's a less common, more
+   deliberate action. */
+.edit-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: opacity 0.1s;
+}
+.bubble:hover .edit-btn { opacity: 0.7; }
+.edit-btn:hover { opacity: 1 !important; color: var(--text); }
+
+.rollback-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+  opacity: 0.7;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.rollback-btn:hover { opacity: 1; color: var(--text); }
+
+/* Inline edit mode — textarea replaces the bubble text in place. */
+.bubble-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bubble-edit-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
+  min-height: 1.4em;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.4;
+}
+.bubble-edit-input:focus { outline: none; }
+.bubble-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.bubble-edit-cancel,
+.bubble-edit-save {
+  font-size: 11px;
+  padding: 3px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  border: 1px solid var(--panel-border);
+}
+.bubble-edit-cancel {
+  background: transparent;
+  color: var(--text-dim);
+}
+.bubble-edit-cancel:hover { color: var(--text); }
+.bubble-edit-save {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.bubble-edit-save:hover { filter: brightness(1.1); }
+
+.chat-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.tool-activity { font-style: italic; }
+.user-action { font-style: italic; }
+
+/* (Background-task tracking lives in the bottom status bar — see .status-bar-tasks.) */
+
+.typing-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.typing-dots span {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  animation: typing-bounce 1s infinite ease-in-out;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
+  40%           { transform: translateY(-3px); opacity: 1; }
+}
+
+/* Status bar pinned to the bottom of the chat window. Always rendered (even when idle)
+   so its presence doesn't shift the layout — and so the user can see at a glance what
+   the voice subsystem is doing without having to hover the mic button. */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--panel-border);
+  background: var(--code-bg);
+  color: var(--text-dim);
+  font-size: 11px;
+  min-height: 22px;
+  /* Never let the column layout squeeze the bar below its content — with the
+     expanded task list (multi-row chips) the bar must GROW, not overflow. */
+  flex-shrink: 0;
+}
+.status-bar.status-recording { color: #e8794a; }
+.status-bar.status-loading   { color: var(--accent); }
+.status-bar.status-busy      { color: var(--accent); }
+
+/* Background tasks (UwU helpers + background commands) — chips docked to the right
+   end of the status bar. Running chips tick a live elapsed time and carry a ✕;
+   finished-but-unannounced ones read "waiting to report" until the character
+   delivers the result in chat. */
+.status-bar-tasks {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+/* Expanded: [ wrapping chip list | collapse toggle ] — the toggle lives outside
+   the wrap flow in its own column so chips can never overlap it; the list wraps
+   onto extra rows and the bar grows with it. */
+.status-bar-tasks.expanded {
+  overflow: visible;
+  align-items: center;
+}
+.bg-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+/* The collapsed summary is a button — reset chrome, keep the chip look. */
+.bg-chip-summary {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+.bg-chip-summary:hover { background: rgba(255, 255, 255, 0.09); color: var(--text); }
+.bg-tasks-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  line-height: 0;
+  flex-shrink: 0;
+}
+.bg-tasks-toggle:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.bg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-dim);
+  white-space: nowrap;
+  min-width: 0;
+  /* Chips never squash — the wrap (and the label's own ellipsis) handles space. */
+  flex-shrink: 0;
+}
+.bg-chip svg { flex-shrink: 0; }
+.bg-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.bg-chip-time { opacity: 0.7; }
+.bg-chip-completed { color: #7fc97f; }
+.bg-chip-failed    { color: #e8794a; }
+.bg-chip-more      { opacity: 0.7; }
+.bg-chip-x {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px;
+  margin-left: 1px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  line-height: 0;
+}
+.bg-chip-x:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+
+/* Composer: input on top with the mic pinned to its top-right corner; controls row below
+   for Send (and future left-side buttons). Input + controls share one outer container so
+   they read as a single visual block. */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--panel-border);
+  background: var(--bg);
+}
+.composer-input-wrap {
+  position: relative;
+}
+/* Live caption shown above the composer while the streaming recognizer is
+   producing partial text. Sized small + dimmed so it reads as ambient feedback,
+   not chat content. */
+.voice-partial {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-dim);
+  background: var(--code-bg);
+  border: 1px dashed var(--panel-border);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 4.5em;
+  overflow-y: auto;
+}
+.chat-input {
+  display: block;
+  width: 100%;
+  background: var(--code-bg);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 6px 36px 6px 10px; /* right padding leaves room for the mic */
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.4;
+  resize: none;
+  /* Native content-sized textarea: starts at exactly one line, grows with each newline /
+     wrap, no JS measurement needed. Cap at 10 lines, then scroll (via wheel/keyboard —
+     scrollbar UI is hidden). (Chromium 123+.) */
+  field-sizing: content;
+  max-height: calc(10 * 1.4em + 12px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.chat-input::-webkit-scrollbar { display: none; }
+.chat-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Mic sits in the top-right corner of the input area and stays there as the textarea grows. */
+.mic-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.mic-btn:hover:not(:disabled) { color: var(--text); border-color: var(--panel-border); }
+.mic-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.mic-btn.recording {
+  background: var(--deny);
+  border-color: transparent;
+  color: white;
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+.mic-btn.busy {
+  background: rgba(200, 162, 58, 0.25);
+  border-color: rgba(200, 162, 58, 0.5);
+  color: var(--text);
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(140, 47, 47, 0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(140, 47, 47, 0); }
+}
+
+/* `.spin` + `@keyframes spin` live in base.css (shared with config). */
+
+/* Buttons that mix an icon with a text label want the two on a baseline-aligned row. */
+.restart-btn,
+.rollback-btn,
+.report-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Mic button content centering (the icon is the entire content). */
+.mic-btn,
+.send-btn,
+.error-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.composer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.composer-controls-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+/* Attach (paperclip) button in the composer controls. */
+.attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.attach-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--panel-border);
+}
+.attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Pending-attachment chips, shown above the input before sending (chip styles are the
+   shared .attachment-chip* rules next to .bubble-text). */
+.composer-attachments {
+  padding: 2px 2px 0;
+}
+.send-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--neon-1), var(--neon-2));
+  color: #000;
+  border: 1px solid var(--neon-1);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  font-family: inherit;
+  box-shadow: 0 0 5px rgba(var(--neon-glow), 0.85), 0 0 12px rgba(var(--neon-glow), 0.55);
+  transition: box-shadow 0.15s ease, filter 0.15s ease;
+}
+.send-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 0 8px rgba(var(--neon-glow), 1), 0 0 18px rgba(var(--neon-glow), 0.75);
+}
+.send-btn:disabled { opacity: 0.35; box-shadow: none; filter: none; cursor: not-allowed; }
+

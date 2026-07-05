@@ -1,0 +1,203 @@
+:root {
+  color-scheme: dark;
+  --bg: #15161a;
+  --panel: #1a1b20;
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --text: #e8e8ea;
+  --text-dim: rgba(232, 232, 234, 0.6);
+  --accent: #fa99cc;
+  --allow: #2f7a4d;
+  --allow-strong: #3a9b5e;
+  --deny: #8c2f2f;
+  --primary: #d6418f;
+  --primary-hover: #e85aa6;
+  /* Neon action-button palette (light → pink). Buttons fill with this gradient + a pink glow
+     and always use black text. */
+  --neon-1: #feebfe;
+  --neon-2: #fa99cc;
+  --neon-glow: 250, 153, 204; /* #fa99cc as rgb, for box-shadow alpha */
+  --code-bg: #0d0e12;
+}
+
+* { box-sizing: border-box; }
+
+/* Global scrollbar style — applied to every scrollable element in the app. The textarea
+   composer overrides this with `display: none` because we hide its scrollbar entirely. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  /* Inset border keeps the thumb from touching the track edges. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-corner { background: transparent; }
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---- Frameless-window shell: custom titlebar above the chat surface ---- */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.app-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.titlebar {
+  flex: 0 0 30px;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  height: 30px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border);
+  user-select: none;
+  -webkit-user-select: none;
+  /* Sit above the Unity-disconnected overlay (so the window stays draggable/closable while
+     reconnecting) but below the settings/dialog panels, which need their own headers visible. */
+  position: relative;
+  z-index: 130;
+}
+.titlebar-drag {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  /* the whole strip is the drag handle; cursor hints it */
+  cursor: default;
+}
+.titlebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+}
+/* App logo shown in place of the title text on the main (chat) window. */
+.titlebar-logo {
+  height: 18px;
+  width: auto;
+  display: block;
+  -webkit-user-drag: none;
+  user-drag: none;
+  pointer-events: none;
+}
+.titlebar-controls {
+  flex: 0 0 auto;
+  display: flex;
+}
+.titlebar-btn {
+  width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.titlebar-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+.titlebar-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.titlebar-btn.active {
+  color: var(--accent, #ff5fa2);
+}
+.titlebar-btn.close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+.status-bar {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.status-dot.connected    { background: #3a9b5e; }
+.status-dot.connecting   { background: #c8a23a; }
+.status-dot.disconnected { background: #8c2f2f; }
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 14px;
+  text-align: center;
+  padding: 24px;
+}
+
+.modal-host {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ----------------------------------------------------------------------------
+   Shared animation primitives. Defined here (imported first) so every feature
+   partial can use them without depending on another partial. Component-specific
+   keyframes (e.g. mic-pulse, typing-bounce) stay with their component.
+   ---------------------------------------------------------------------------- */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Spinner utility (e.g. the mic's "transcribing…" LoaderCircle, config save). */
+.spin { animation: spin 0.9s linear infinite; }
+
