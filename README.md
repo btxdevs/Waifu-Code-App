@@ -166,7 +166,6 @@ Everything is stored locally, next to the app:
 | `saves/` | Chat histories and their image attachments |
 | `memory/` | Long-term memory (per-character and per-project JSON) |
 | `models/` | Auto-downloaded STT/TTS/OCR models |
-| `voices/` | Your TTS reference WAVs (git-ignored — often personal voice samples) |
 | `Logs/` | `app.log` |
 
 The only network traffic is: your configured LLM endpoint, web search/fetch when the character uses those tools, and Hugging Face model downloads on first run.

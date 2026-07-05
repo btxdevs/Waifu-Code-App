@@ -131,12 +131,6 @@ os.environ.setdefault('HF_HOME', str(MODELS_DIR))
 os.environ.setdefault('HF_HUB_CACHE', str(MODELS_DIR))
 os.environ.setdefault('HF_HUB_DISABLE_SYMLINKS_WARNING', 'true')
 
-# TTS reference voices. Each character carries its own per-provider voice (see
-# CharacterRecord.voices); pocket voices are encoded from a reference clip into the
-# character's folder (`characters/<charId>/voice_<hash>.npy`) at save time.
-VOICES_DIR = APP_ROOT / 'voices'
-VOICES_DIR.mkdir(parents=True, exist_ok=True)
-
 # ----------- protocol constants (mirrors C# AppProtocol) -----------
 
 PROTOCOL_VERSION = 1
@@ -594,14 +588,12 @@ class Bridge:
         # Local TTS (replaces Unity's ElevenLabs-HTTP TtsClient). TtsController owns
         # the provider (pocket-tts ONNX or ElevenLabs proxy) and runs synthesis on
         # worker threads, streaming `Tts.AudioChunk` envelopes back over the WS.
-        # Bridge routes `Tts.*` envelopes here in handle_envelope. VOICES_DIR is
-        # where bare voiceMap names resolve to user-supplied reference WAVs.
+        # Bridge routes `Tts.*` envelopes here in handle_envelope.
         # Constructed BEFORE the STT controller so we can hand voice the hooks it
         # needs for hands-free barge-in (is_active / cancel_active).
         self.tts = tts.make_tts_controller(
             _CONFIG,
             send_envelope=self.send_envelope,
-            voices_dir=VOICES_DIR,
         )
         # Fingerprint of the TTS config the controller was built from, so a later
         # save_config only hot-swaps the provider when something TTS-related
@@ -717,7 +709,7 @@ class Bridge:
         tts_cfg['provider'] = name
         cfg['tts'] = tts_cfg
         try:
-            self.tts.reload(tts.build_provider(cfg, VOICES_DIR))
+            self.tts.reload(tts.build_provider(cfg))
             self._tts_config_sig = tts.tts_config_signature(cfg)
         except Exception as e:
             print(f'[tts] per-chat provider switch to {name!r} failed: {e}', file=sys.stderr)
@@ -835,7 +827,7 @@ class Bridge:
             with self._pocket_encoder_lock:
                 if self._pocket_encoder is None:
                     print('[tts] building standalone pocket encoder (active provider isn\'t pocket)…')
-                    self._pocket_encoder = tts.build_pocket_encoder(_CONFIG, VOICES_DIR)
+                    self._pocket_encoder = tts.build_pocket_encoder(_CONFIG)
                 provider = self._pocket_encoder
         provider.encode_voice_to_file(clip_path, out_path)
 
@@ -1461,7 +1453,7 @@ class ChatApi(_BaseApi):
             # ONNX engine.
             new_tts_sig = tts.tts_config_signature(fresh_app)
             if new_tts_sig != self._bridge._tts_config_sig:
-                self._bridge.tts.reload(tts.build_provider(fresh_app, VOICES_DIR))
+                self._bridge.tts.reload(tts.build_provider(fresh_app))
                 self._bridge._tts_config_sig = new_tts_sig
                 # The active provider changed — the current character may now have (or
                 # lack) a voice for it, so re-gate voice mode and tell the renderer.

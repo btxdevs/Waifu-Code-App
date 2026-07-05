@@ -12,7 +12,7 @@ notes/
 # Runtime chat saves + the per-chat reports they generate (user/session data).
 saves/
 
-# User-created characters (personal data; includes voice embeddings under voices/).
+# User-created characters (personal data; includes model copies + voice embeddings).
 characters/
 
 # Runtime long-term memory store (personal data the assistant remembers).
@@ -39,9 +39,3 @@ python/app.log
 # HF cache for STT (sherpa-onnx streaming Zipformer + silero_vad.onnx) and the
 # pocket-tts bundles — see MODELS_DIR in app.py.
 models/
-
-# User-supplied TTS reference WAVs. Add yours but don't commit them — they're
-# often personal voice samples. See VOICES_DIR in app.py and tts.voiceMap
-# in app.config.json.
-voices/*.wav
-voices/*.WAV

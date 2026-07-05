@@ -1,7 +1,7 @@
 """Single source of truth for the application's base directory.
 
 Every read-only resource (the built UI under dist/, system_prompt.txt, the *.config.json
-files) and every writable user-data directory (models/, voices/, characters/, saves/,
+files) and every writable user-data directory (models/, characters/, saves/,
 memory/) lives under one root. In a source checkout that root is CompanionApp/; in a
 PyInstaller onedir build it's the folder that contains the .exe — the build script copies
 the static resources next to the .exe so the same relative layout holds either way.

@@ -194,7 +194,7 @@ class LibraryMixin:
             if voice_id:
                 out["elevenlabs"] = {"voiceId": voice_id}
 
-        # --- Pocket: reference clip → embedding (.npy) under voices/embeddings/. ---
+        # --- Pocket: reference clip → embedding (.npy) in the character's folder. ---
         pk = payload_voices.get("pocket")
         if isinstance(pk, dict):
             prev_pk = prev.get("pocket") if isinstance(prev.get("pocket"), dict) else {}

@@ -123,13 +123,6 @@ class TtsProvider:
         error) so providers without a sensible default fail loudly."""
         return ''
 
-    def resolve_voice(self, value: str) -> str:
-        """Lets the provider interpret a raw voiceMap value before it's used.
-        Default returns the value unchanged — appropriate for remote APIs that
-        treat the value as an opaque identifier. PocketTtsProvider overrides to
-        look bare names up against its local reference-WAV directory."""
-        return value
-
     def stream_synthesize(self, text: str, voice: str) -> Iterator[tuple[int, int, Any]]:
         raise NotImplementedError
 
@@ -178,7 +171,6 @@ class PocketTtsProvider(TtsProvider):
         language: str,
         lsd_steps: int,
         temperature: float,
-        voices_dir: Path | None = None,
     ):
         self._precision = precision
         self._language = language
@@ -186,11 +178,6 @@ class PocketTtsProvider(TtsProvider):
         self._temperature = temperature
         self._engine = None
         self._engine_lock = threading.Lock()
-        # Where to look up bare voiceMap names as `<voices_dir>/<name>.wav`. The
-        # ElevenLabs path doesn't need this because the remote server treats the
-        # voice as an opaque id; only pocket-tts needs an actual local WAV to
-        # encode through mimi_encoder.
-        self._voices_dir = Path(voices_dir) if voices_dir else None
         # Populated by `ensure_loaded()` — caller (factory / TtsController) reads this
         # to resolve the default voice. Kyutai's built-in voice names (alba, etc.)
         # would otherwise trigger a fetch from the gated `kyutai/pocket-tts` repo;
@@ -271,24 +258,6 @@ class PocketTtsProvider(TtsProvider):
         except Exception as e:
             print(f'[tts] reference clip cap failed ({e}); encoding as-is', file=sys.stderr)
             return clip_path, None
-
-    def resolve_voice(self, value: str) -> str:
-        """Try local reference WAV first, fall through to the raw value for
-        built-in voice names or pre-computed safetensors paths. Lookup order:
-            1. <voices_dir>/<value>             (literal filename match)
-            2. <voices_dir>/<value>.wav         (so users can write "tomoko" not "tomoko.wav")
-            3. value itself                     (absolute path or built-in name)
-        """
-        if not value or self._voices_dir is None:
-            return value
-        candidate = self._voices_dir / value
-        if candidate.exists():
-            return str(candidate)
-        if not value.lower().endswith('.wav'):
-            candidate_wav = self._voices_dir / f'{value}.wav'
-            if candidate_wav.exists():
-                return str(candidate_wav)
-        return value
 
     @staticmethod
     def _allow_patterns(precision: str) -> list[str]:
@@ -658,9 +627,6 @@ class TtsController:
 
         if not voice:
             voice = self._provider.default_voice()
-        # PocketTtsProvider passes embedding/WAV paths through; ElevenLabs treats the
-        # value as an opaque id. resolve_voice is a no-op for already-resolved values.
-        voice = self._provider.resolve_voice(voice)
         if not voice:
             self._send_error(req_id, 'No voice configured for this character (and no provider default).')
             return
@@ -757,7 +723,7 @@ def tts_config_signature(config: dict) -> str:
     return json.dumps({'tts': tts_cfg, 'env': env}, sort_keys=True, default=str)
 
 
-def build_pocket_encoder(config: dict, voices_dir: Path | None = None) -> PocketTtsProvider:
+def build_pocket_encoder(config: dict) -> PocketTtsProvider:
     """A PocketTtsProvider built solely for encoding reference clips into embeddings,
     independent of the active TTS provider. Used when a character's pocket voice needs
     its embedding generated while ElevenLabs (say) is the active provider — see
@@ -773,14 +739,10 @@ def build_pocket_encoder(config: dict, voices_dir: Path | None = None) -> Pocket
     return PocketTtsProvider(
         precision=precision, language=language,
         lsd_steps=lsd_steps, temperature=temperature,
-        voices_dir=voices_dir,
     )
 
 
-def build_provider(
-    config: dict,
-    voices_dir: Path | None = None,
-) -> TtsProvider:
+def build_provider(config: dict) -> TtsProvider:
     """Construct the active TTS provider from a parsed app.config.json dict.
     Shared by the startup factory and the hot-reload path so both interpret
     `tts.provider` (and its env overrides) identically."""
@@ -788,7 +750,7 @@ def build_provider(
     provider_name = str(_env_or('APP_TTS_PROVIDER', tts_cfg.get('provider', 'pocket'))).lower()
 
     if provider_name == 'pocket':
-        return build_pocket_encoder(config, voices_dir)
+        return build_pocket_encoder(config)
     elif provider_name == 'elevenlabs':
         e_cfg = tts_cfg.get('elevenlabs') or {}
         return ElevenLabsProvider(
@@ -807,18 +769,13 @@ def build_provider(
 def make_tts_controller(
     config: dict,
     send_envelope: Callable[[dict], None],
-    voices_dir: Path | None = None,
 ) -> TtsController:
     """Build a TtsController from a parsed app.config.json dict.
 
     `send_envelope(env)` is invoked whenever the controller wants to send an
     envelope to Unity — typically `Bridge.send_envelope`.
-
-    `voices_dir` is the directory where user-supplied reference WAVs live; bare
-    pocket voice names are resolved against it. app.py passes the canonical
-    `CompanionApp/voices/` path.
     """
     return TtsController(
         send_envelope=send_envelope,
-        provider=build_provider(config, voices_dir),
+        provider=build_provider(config),
     )
