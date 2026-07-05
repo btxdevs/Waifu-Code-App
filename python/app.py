@@ -1742,11 +1742,18 @@ class ChatApi(_BaseApi):
             return []
 
     def open_workspace_folder(self):
-        """Open the configured workspace root in the OS file explorer. Returns
+        """Open the active chat's workspace root in the OS file explorer — the per-chat
+        override when the chat has one, else the global config root. Returns
         {ok: True} or {ok: False, error: str}. Used by the sidebar's Workspace button."""
         try:
-            settings = _read_settings()
-            roots = settings.get('workspace', {}).get('allowedRoots') or []
+            # The live ChatManager knows the roots actually in force (per-chat override,
+            # else the global baseline captured at session start). Only fall back to the
+            # settings file when no session has populated them yet.
+            chat = getattr(self._bridge, 'chat', None)
+            roots = chat._effective_workspace_roots() if chat is not None else []
+            if not roots:
+                settings = _read_settings()
+                roots = settings.get('workspace', {}).get('allowedRoots') or []
             root = roots[0] if roots else None
             if not root:
                 return {'ok': False, 'error': 'No workspace folder is configured.'}
