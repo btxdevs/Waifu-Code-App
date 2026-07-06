@@ -199,19 +199,28 @@ class PocketTtsProvider(TtsProvider):
     # shot, so a long file (e.g. a full song) balloons activations to tens of GB of RAM. Mirrors
     # KevinAHM/pocket-tts-web (onnx-streaming.js): SAMPLE_RATE * 10 → a 10s cap is plenty to clone.
     _MAX_REFERENCE_SECONDS = 10.0
+    # Tail treatment for the reference clip. Generation acoustically CONTINUES from the voice
+    # prompt, so whatever the clip ends with bleeds into the start of every synthesized
+    # sentence — a hard cut mid-word (the 10s cap) or an abrupt ending gives garbled /
+    # random-loudness onsets. Fading the tail out and appending a beat of silence makes the
+    # prompt end like a natural pause, so each sentence starts from "between utterances".
+    _REFERENCE_FADE_SECONDS = 0.1
+    _REFERENCE_TAIL_SILENCE_SECONDS = 0.4
 
     def encode_voice_to_file(self, clip_path: str, out_path: str) -> None:
         """Encode a reference voice clip into a mimi-encoder embedding and persist it
         as a `.npy` (the format `stream_synthesize` loads). Heavy (runs the encoder
         ONNX session); call off the event loop. Loads the engine on first use.
 
-        The clip is capped to `_MAX_REFERENCE_SECONDS` first (reading only that span off disk) so a
-        long file doesn't blow up encoder memory — the engine still mono-mixes + resamples it."""
+        The clip is conditioned first (see `_condition_reference_clip`): capped to
+        `_MAX_REFERENCE_SECONDS` so a long file doesn't blow up encoder memory, tail faded out +
+        padded with silence so the voice prompt ends like a natural pause (sentence-onset
+        quality) — the engine still resamples it."""
         import numpy as np
         self.ensure_loaded()
         if self._engine is None:
             raise RuntimeError('pocket-tts engine unavailable for encoding')
-        clip_to_encode, tmp_path = self._cap_reference_clip(clip_path)
+        clip_to_encode, tmp_path = self._condition_reference_clip(clip_path)
         try:
             embeddings = self._engine.encode_voice(clip_to_encode)
             out = Path(out_path)
@@ -224,39 +233,43 @@ class PocketTtsProvider(TtsProvider):
                 except OSError:
                     pass
 
-    def _cap_reference_clip(self, clip_path: str) -> tuple[str, str | None]:
-        """Return a clip no longer than `_MAX_REFERENCE_SECONDS` to encode, plus a temp file to
-        delete afterwards (None when the original is short enough / can't be inspected). Reads only
-        the capped span (`frames=`) so a huge file never loads whole; mono-mixed and written as
-        PCM_16 so the engine's wav reader decodes it (it resamples to 24 kHz itself). On any failure
-        the original clip is returned unchanged — correctness over the memory guard."""
+    def _condition_reference_clip(self, clip_path: str) -> tuple[str, str | None]:
+        """Return a clip prepared for the mimi encoder, plus a temp file to delete afterwards
+        (None when the original had to be used as-is). Three treatments: capped to
+        `_MAX_REFERENCE_SECONDS` (reading only that span off disk — `frames=` — so a huge file
+        never loads whole), tail faded out over `_REFERENCE_FADE_SECONDS`, and
+        `_REFERENCE_TAIL_SILENCE_SECONDS` of silence appended (see the constants for why the tail
+        matters). Mono-mixed and written as PCM_16 so the engine's wav reader decodes it (it
+        resamples to 24 kHz itself). On any failure the original clip is returned unchanged —
+        correctness over the tail conditioning."""
         try:
             import soundfile as sf
+            import numpy as np
+            import tempfile
         except Exception:
             return clip_path, None
         try:
             info = sf.info(clip_path)
-        except Exception as e:
-            print(f'[tts] reference clip info failed ({e}); encoding as-is', file=sys.stderr)
-            return clip_path, None
-        if info.samplerate <= 0 or info.frames <= 0:
-            return clip_path, None
-        max_frames = int(self._MAX_REFERENCE_SECONDS * info.samplerate)
-        if info.frames <= max_frames:
-            return clip_path, None  # already short enough
-        try:
-            import numpy as np
-            import tempfile
-            audio, sr = sf.read(clip_path, frames=max_frames, dtype='float32', always_2d=True)
+            if info.samplerate <= 0 or info.frames <= 0:
+                return clip_path, None
+            max_frames = int(self._MAX_REFERENCE_SECONDS * info.samplerate)
+            if info.frames > max_frames:
+                print(f'[tts] reference clip capped {info.frames / info.samplerate:.1f}s → '
+                      f'{self._MAX_REFERENCE_SECONDS:.0f}s for encoding', file=sys.stderr)
+            audio, sr = sf.read(clip_path, frames=min(info.frames, max_frames),
+                                dtype='float32', always_2d=True)
             audio = np.asarray(audio, dtype=np.float32).mean(axis=1)  # stereo → mono
+            fade_len = min(len(audio), int(self._REFERENCE_FADE_SECONDS * sr))
+            if fade_len > 0:
+                audio[-fade_len:] *= np.linspace(1.0, 0.0, fade_len, dtype=np.float32)
+            tail = np.zeros(int(self._REFERENCE_TAIL_SILENCE_SECONDS * sr), dtype=np.float32)
+            audio = np.concatenate([audio, tail])
             fd, tmp_path = tempfile.mkstemp(prefix='pkt_ref_', suffix='.wav')
             os.close(fd)
             sf.write(tmp_path, audio, sr, subtype='PCM_16')
-            print(f'[tts] reference clip capped {info.frames / info.samplerate:.1f}s → '
-                  f'{self._MAX_REFERENCE_SECONDS:.0f}s for encoding', file=sys.stderr)
             return tmp_path, tmp_path
         except Exception as e:
-            print(f'[tts] reference clip cap failed ({e}); encoding as-is', file=sys.stderr)
+            print(f'[tts] reference clip conditioning failed ({e}); encoding as-is', file=sys.stderr)
             return clip_path, None
 
     @staticmethod
@@ -318,6 +331,13 @@ class PocketTtsProvider(TtsProvider):
                 lsd_steps=self._lsd_steps,
             )
             _install_voice_state_cache_patch(engine)
+            # The english_2026-04 bundle ships `pad_with_spaces_for_short_inputs:
+            # false`, disabling the engine's own onset stabilizer. Short prompts
+            # (<5 words) give the flow-LM too little conditioning run-up and the
+            # first word comes out garbled or at random loudness; the 8 leading
+            # spaces it pads restore that run-up. Force it on — the padding only
+            # ever applies to short inputs (see _prepare_text_prompt).
+            engine.pad_with_spaces_for_short_inputs = True
             self._engine = engine
             print(f'[tts] pocket-tts ready ({engine.sample_rate} Hz)')
 

@@ -1,8 +1,12 @@
-# VENDORED from the HuggingFace repo `KevinAHM/pocket-tts-onnx`
-# (snapshot 58a6d00cf13d239b6748cb0769f35c580a8f606c). Pulled into the project so it imports
-# as a normal module — the engine inference code is static (analyzable by PyInstaller, so its
-# deps wave/sentencepiece/safetensors/soundfile/scipy ship in the exe), while only the model
-# weights still download at runtime. To update: re-copy this file from a newer snapshot.
+# Originally vendored from the HuggingFace repo `KevinAHM/pocket-tts-onnx`
+# (snapshot 58a6d00cf13d239b6748cb0769f35c580a8f606c) so it imports as a normal module —
+# the engine inference code is static (analyzable by PyInstaller, so its deps
+# wave/sentencepiece/safetensors/soundfile/scipy ship in the exe), while only the model
+# weights still download at runtime. This copy is now the canonical, locally-maintained
+# version (no longer synced from the snapshot) and carries local changes:
+#   * onset temperature ramp in `_run_flow_lm_chunk` (ONSET_TEMPERATURE_SCALE) — the first
+#     frames of every sentence are sampled with reduced noise so onsets don't come out
+#     garbled / at random loudness.
 """
 PocketTTS ONNX - bundle-aware ONNX inference for Pocket TTS.
 """
@@ -43,6 +47,12 @@ class PocketTTSOnnx:
     VALID_PRECISIONS = ("int8", "fp32")
     TOKENS_PER_SECOND_ESTIMATE = 3.0
     GEN_SECONDS_PADDING = 2.0
+    # LOCAL PATCH: per-frame temperature multipliers for the first frames of each
+    # sentence chunk. Frame 0 is sampled from pure noise with no acoustic history of
+    # its own (only the voice-prompt state), so full-temperature noise integrated in
+    # few LSD steps lands at unstable energy — audible as garbled / too-loud /
+    # too-quiet sentence starts. Frames past the tuple use `temperature` unchanged.
+    ONSET_TEMPERATURE_SCALE = (0.4, 0.6, 0.8)
 
     def __init__(
         self,
@@ -515,8 +525,11 @@ class PocketTTSOnnx:
             if eos_step is not None and step >= eos_step + frames_after_eos:
                 break
 
-            if self.temperature > 0:
-                std = np.sqrt(self.temperature)
+            temperature = self.temperature
+            if step < len(self.ONSET_TEMPERATURE_SCALE):
+                temperature *= self.ONSET_TEMPERATURE_SCALE[step]
+            if temperature > 0:
+                std = np.sqrt(temperature)
                 x = np.random.normal(0.0, std, (1, self.latent_dim)).astype(np.float32)
             else:
                 x = np.zeros((1, self.latent_dim), dtype=np.float32)
