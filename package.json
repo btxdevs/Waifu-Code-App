@@ -1,6 +1,6 @@
 {
   "name": "waifucode",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "Waifu Code — renderer for the desktop character window. Hosted by python/app.py via pywebview (was Electron before v0.2).",
   "type": "module",
   "scripts": {
