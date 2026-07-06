@@ -146,7 +146,6 @@ TYPE_QUESTION_ANSWER = 'QuestionAnswer'
 TYPE_PERMISSION_DECISION = 'PermissionDecision'
 TYPE_REPORT_CLOSED = 'ReportClosed'
 
-INTERACTIVE_TYPES = {TYPE_SHOW_REPORT, TYPE_ASK_QUESTION, TYPE_REQUEST_PERMISSION}
 CHAT_TYPE_PREFIX = 'Chat.'
 
 # Renderer-internal event (pushed over the JS bridge, never hits the WS): tells the chat
@@ -967,16 +966,10 @@ class Bridge:
             self.ensure_chat_window()
             return
 
-        # Chat.ViewState is a real inbound Chat.* the orchestrator consumes (per-chat camera/window
-        # framing) — route it before the legacy Chat.* drop below, which would otherwise discard it.
+        # Chat.ViewState (per-chat camera/window framing) is the only Chat.* Unity sends;
+        # the rest of the family is outbound (ChatManager → renderer / Unity).
         if t == 'Chat.ViewState':
             self.chat.handle_unity_envelope(env)
-            return
-
-        # Chat orchestrator lives in Python now. Any (other) inbound Chat.* from Unity is
-        # legacy — drop it so two sources don't race the renderer. Once the Unity-side
-        # ChatUIController is deleted (phase 16) this branch becomes a no-op.
-        if isinstance(t, str) and t.startswith(CHAT_TYPE_PREFIX):
             return
 
         # Chat orchestrator lives in Python now — these envelopes go to ChatManager
@@ -1018,11 +1011,9 @@ class Bridge:
             self.image_proc.handle_envelope(env)
             return
 
-        if t not in INTERACTIVE_TYPES:
-            return
-        if not env.get('id'):
-            return
-        self.spawn_task_window(env)
+        # Anything else is unknown/unhandled — ignore. (Interactive modals are no longer
+        # spawned from the WS: ShowReport/AskQuestion/RequestPermission windows are opened
+        # locally by ChatManager / the Python tool runner via spawn_task_window.)
 
     # ----- chat window -----
 
@@ -1313,18 +1304,16 @@ class TaskApi(_BaseApi):
         if self._replied:
             return
         self._replied = True
+        # Without a local_reply the answer goes nowhere and the reply just closes the
+        # window — that's the ChatManager report-viewer case (nothing consumes a
+        # ReportClosed). Task windows are only spawned locally now; the Unity-originated
+        # modals that awaited a reply over the WS are gone. `type_` is kept in the
+        # signature because the renderer still calls reply(type, payload).
         if self._local_reply is not None:
             try:
                 self._local_reply(payload if isinstance(payload, dict) else {})
             except Exception as e:
                 print(f'[CompanionApp] local_reply failed: {e}', file=sys.stderr)
-        else:
-            self._bridge.send_envelope({
-                'id': new_id(),
-                'type': type_,
-                'replyTo': self._envelope['id'],
-                'payload': payload,
-            })
         # Defer window destruction to a worker thread. Calling `destroy()` directly
         # from inside the JS bridge handler can deadlock on Windows — pywebview's
         # bridge is still waiting for THIS function to return while destroy() tries

@@ -102,14 +102,6 @@ class LlmConfigRegistry:
         return self.get(self.default_id) or (self.entries[0] if self.entries else None)
 
 
-def load(path: str | os.PathLike | None = None) -> ChatBackendConfig:
-    """Reads the config file and returns the DEFAULT config's ChatBackendConfig. Kept for
-    backward compatibility (startup builds the manager with the default); per-chat switching
-    goes through load_registry()."""
-    entry = load_registry(path).default()
-    return entry.config if entry is not None else ChatBackendConfig()
-
-
 def load_registry(path: str | os.PathLike | None = None) -> LlmConfigRegistry:
     """Reads the config file into a registry of named configs. Handles both the new
     `{configs: [...], default_id}` schema and the legacy flat single-config file. Never

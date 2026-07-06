@@ -5,11 +5,12 @@ export const PROTOCOL_VERSION = 1;
 
 // Unity → Electron
 export const TYPE_HELLO = 'Hello';
+export const TYPE_OPEN_CHAT_WINDOW = 'OpenChatWindow';
+
+// Task-window modals — spawned locally (ChatManager / Python tool runner), not over the WS.
 export const TYPE_SHOW_REPORT = 'ShowReport';
 export const TYPE_ASK_QUESTION = 'AskQuestion';
 export const TYPE_REQUEST_PERMISSION = 'RequestPermission';
-export const TYPE_DISMISS_MODAL = 'DismissModal';
-export const TYPE_OPEN_CHAT_WINDOW = 'OpenChatWindow';
 
 // Chat — Unity → Electron
 export const TYPE_CHAT_INIT = 'Chat.Init';

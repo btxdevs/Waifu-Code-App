@@ -1,5 +1,6 @@
-// Task-window / modal payloads (Unity ↔ renderer): hello/handshake, report viewer, AskUserQuestion, permission gate, errors.
-// Mirrors the matching payloads in Assets/Scripts/App/AppProtocol.cs.
+// Task-window / modal payloads: hello/handshake, report viewer, AskUserQuestion, permission
+// gate, errors. Modals are spawned locally (ChatManager / Python tool runner → task window);
+// nothing here crosses the Unity WS anymore.
 
 export interface HelloPayload {
   protocolVersion: number;
@@ -30,10 +31,6 @@ export interface RequestPermissionPayload {
   tier: string; // "WorkspaceWrite" | "DangerFullAccess"
   toolName: string;
   detail: string;
-}
-
-export interface DismissModalPayload {
-  targetId: string;
 }
 
 export interface ClientReadyPayload {
