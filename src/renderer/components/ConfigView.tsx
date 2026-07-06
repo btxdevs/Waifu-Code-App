@@ -4,6 +4,7 @@ import type {
   AppConfig,
   ElevenLabsConfigBlock,
   LlmConfigBlock,
+  PocketTtsConfigBlock,
   TtsConfigBlock,
   WorkspaceConfigBlock,
 } from '../payloads/config';
@@ -30,7 +31,7 @@ export function ConfigView({ onClose }: Props) {
   // Which LLM config the LLM tab is currently editing (id into config.llm.configs).
   const [selectedLlmId, setSelectedLlmId] = useState<string>('');
   // Settings are split across tabs (the list grows as features are added). Add new tabs here.
-  const [tab, setTab] = useState<'general' | 'llm'>('general');
+  const [tab, setTab] = useState<'general' | 'llm' | 'tts'>('general');
 
   useEffect(() => {
     let cancelled = false;
@@ -116,6 +117,9 @@ export function ConfigView({ onClose }: Props) {
   }, []);
   const patchEleven = useCallback((patch: Partial<ElevenLabsConfigBlock>) => {
     setConfig(c => c ? { ...c, tts: { ...c.tts, elevenlabs: { ...c.tts.elevenlabs, ...patch } } } : c);
+  }, []);
+  const patchPocket = useCallback((patch: Partial<PocketTtsConfigBlock>) => {
+    setConfig(c => c ? { ...c, tts: { ...c.tts, pocket: { ...c.tts.pocket, ...patch } } } : c);
   }, []);
 
   const pickWorkspaceDir = useCallback(async (index: number) => {
@@ -227,6 +231,12 @@ export function ConfigView({ onClose }: Props) {
           onClick={() => setTab('llm')}
         >
           LLM
+        </button>
+        <button
+          className={'config-tab' + (tab === 'tts' ? ' active' : '')}
+          onClick={() => setTab('tts')}
+        >
+          TTS
         </button>
       </nav>
 
@@ -506,6 +516,9 @@ export function ConfigView({ onClose }: Props) {
           </span>
         </section>
 
+        </>}
+
+        {tab === 'tts' && <>
         {/* ---- Voice (TTS) ---- */}
         <section className="config-section">
           <h2>Voice</h2>
@@ -523,9 +536,53 @@ export function ConfigView({ onClose }: Props) {
               <option value="elevenlabs">ElevenLabs (HTTP API)</option>
             </select>
           </label>
+        </section>
 
-          {config.tts.provider === 'elevenlabs' && (
-            <>
+        {config.tts.provider === 'pocket' && (
+          <section className="config-section">
+            <h2>Pocket TTS</h2>
+            <span className="config-hint">
+              Both settings rebuild the local model on save, so the next spoken reply may lag a
+              moment while the engine reloads.
+            </span>
+            <label className="config-field">
+              <span>Performance ⇄ quality ({config.tts.pocket.lsdSteps} flow step{config.tts.pocket.lsdSteps === 1 ? '' : 's'})</span>
+              <input
+                type="range"
+                min={1} max={4} step={1}
+                value={config.tts.pocket.lsdSteps}
+                onChange={e => patchPocket({ lsdSteps: Number(e.target.value) })}
+              />
+              <div className="config-slider-labels">
+                <span>Faster</span>
+                <span>Cleaner voice</span>
+              </div>
+              <span className="config-hint">
+                How many refinement steps shape each audio frame. More steps sound cleaner and more
+                stable (especially sentence starts) but cost CPU per sentence; fewer steps keep
+                synthesis snappy on weaker machines.
+              </span>
+            </label>
+            <label className="config-field">
+              <span>Quantization</span>
+              <select
+                value={config.tts.pocket.precision}
+                onChange={e => patchPocket({ precision: e.target.value })}
+              >
+                <option value="fp32">Full precision (fp32) — best quality</option>
+                <option value="int8">Quantized (int8) — faster, lighter</option>
+              </select>
+              <span className="config-hint">
+                Switching for the first time downloads that variant's model files
+                (a few hundred MB) before the voice comes back.
+              </span>
+            </label>
+          </section>
+        )}
+
+        {config.tts.provider === 'elevenlabs' && (
+          <section className="config-section">
+            <h2>ElevenLabs</h2>
               <label className="config-field">
                 <span>Base URL</span>
                 <input
@@ -615,9 +672,8 @@ export function ConfigView({ onClose }: Props) {
                   />
                 </label>
               </div>
-            </>
-          )}
-        </section>
+          </section>
+        )}
         </>}
       </div>
     </div>

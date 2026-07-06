@@ -68,7 +68,7 @@
     "pocket": {
       "precision": "fp32",
       "language": "english_2026-04",
-      "lsdSteps": 4,
+      "lsdSteps": 3,
       "temperature": 0.7
     },
     "elevenlabs": {

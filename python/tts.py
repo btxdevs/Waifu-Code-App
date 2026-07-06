@@ -754,7 +754,7 @@ def build_pocket_encoder(config: dict) -> PocketTtsProvider:
     if precision not in ('int8', 'fp32'):
         precision = 'int8'
     language = str(_env_or('APP_TTS_LANGUAGE', p_cfg.get('language', 'english_2026-04')))
-    lsd_steps = int(_env_or('APP_TTS_LSD_STEPS', p_cfg.get('lsdSteps', 1)))
+    lsd_steps = int(_env_or('APP_TTS_LSD_STEPS', p_cfg.get('lsdSteps', 3)))
     temperature = float(_env_or('APP_TTS_TEMPERATURE', p_cfg.get('temperature', 0.7)))
     return PocketTtsProvider(
         precision=precision, language=language,

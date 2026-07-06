@@ -321,6 +321,7 @@ def _read_settings() -> dict:
 
     workspace = app.get('workspace') if isinstance(app.get('workspace'), dict) else {}
     tts = app.get('tts') if isinstance(app.get('tts'), dict) else {}
+    pocket = tts.get('pocket') if isinstance(tts.get('pocket'), dict) else {}
     eleven = tts.get('elevenlabs') if isinstance(tts.get('elevenlabs'), dict) else {}
     ui = app.get('ui') if isinstance(app.get('ui'), dict) else {}
 
@@ -341,6 +342,12 @@ def _read_settings() -> dict:
         },
         'tts': {
             'provider': str(tts.get('provider') or 'pocket'),
+            # Defaults mirror tts.build_pocket_encoder so the panel shows what the
+            # provider would actually run with when the keys are absent on disk.
+            'pocket': {
+                'precision': str(pocket.get('precision') or 'int8'),
+                'lsdSteps': pocket.get('lsdSteps') if isinstance(pocket.get('lsdSteps'), int) else 3,
+            },
             'elevenlabs': {
                 'baseUrl': str(eleven.get('baseUrl') or ''),
                 'apiKey': str(eleven.get('apiKey') or ''),
@@ -454,6 +461,19 @@ def _write_settings(data: dict) -> None:
         tts = app_existing.get('tts') if isinstance(app_existing.get('tts'), dict) else {}
         if 'provider' in tts_in:
             tts['provider'] = str(tts_in.get('provider') or 'pocket').lower()
+        if isinstance(tts_in.get('pocket'), dict):
+            p_in = tts_in['pocket']
+            p = tts.get('pocket') if isinstance(tts.get('pocket'), dict) else {}
+            if 'precision' in p_in:
+                precision = str(p_in.get('precision') or 'int8').lower()
+                p['precision'] = precision if precision in ('int8', 'fp32') else 'int8'
+            if 'lsdSteps' in p_in:
+                try:
+                    steps = int(p_in.get('lsdSteps'))
+                except (TypeError, ValueError):
+                    steps = 3
+                p['lsdSteps'] = min(4, max(1, steps))
+            tts['pocket'] = p
         if isinstance(tts_in.get('elevenlabs'), dict):
             el_in = tts_in['elevenlabs']
             el = tts.get('elevenlabs') if isinstance(tts.get('elevenlabs'), dict) else {}

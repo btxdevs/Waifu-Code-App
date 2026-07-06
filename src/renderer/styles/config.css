@@ -136,6 +136,18 @@
   outline: none;
   border-color: var(--accent);
 }
+.config-field input[type='range'] {
+  width: 100%;
+  margin: 2px 0;
+  accent-color: var(--accent);
+}
+/* End-point captions under a range slider (e.g. "Faster" ⇄ "Cleaner voice"). */
+.config-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+}
 .config-field textarea {
   width: 100%;
   padding: 6px 8px;

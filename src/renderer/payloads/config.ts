@@ -55,9 +55,19 @@ export interface ElevenLabsConfigBlock {
   requestTimeoutSeconds: number;
 }
 
+/** Local pocket-tts-onnx engine settings. Only consumed when `tts.provider === 'pocket'`. */
+export interface PocketTtsConfigBlock {
+  /** "int8" (quantized, faster) | "fp32" (full precision, best quality). */
+  precision: string;
+  /** Flow refinement steps per audio frame (1–4, default 3). More steps = cleaner speech,
+   *  more CPU — past 4 the gain is negligible for a model this small. */
+  lsdSteps: number;
+}
+
 export interface TtsConfigBlock {
   /** "pocket" (local pocket-tts-onnx, default) | "elevenlabs". */
   provider: string;
+  pocket: PocketTtsConfigBlock;
   elevenlabs: ElevenLabsConfigBlock;
 }
 
