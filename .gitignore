@@ -13,7 +13,10 @@ notes/
 saves/
 
 # User-created characters (personal data; includes model copies + voice embeddings).
-characters/
+# Exception: Near (36be9dec…) is the bundled starter character and ships with the
+# repo — her character.json uses folder-relative paths so she works from any clone.
+characters/*
+!characters/36be9dec6efa4168abaa854c21dfc0db/
 
 # Runtime long-term memory store (personal data the assistant remembers).
 memory/

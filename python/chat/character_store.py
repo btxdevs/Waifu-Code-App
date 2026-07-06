@@ -80,8 +80,11 @@ class CharacterRecord:
     initial_assistant_message: str = "Hello!"
     system_prompt_template: str = ""
     initial_emotion_label: str = "Neutral"
-    # Absolute path to the character's model — the app-owned copy in the character's
-    # folder (model_<hash>.<ext>); sent to Unity as Session.Begin.modelPath.
+    # Path to the character's model — the app-owned copy in the character's folder
+    # (model_<hash>.<ext>); sent to Unity as Session.Begin.modelPath. In memory this is
+    # always absolute; on disk it's stored relative to the character's folder whenever
+    # it lives inside it (see CharacterStore.save/_resolve_relative_paths), so the
+    # folder stays portable across machines.
     model_path: str = ""
     # The originally picked file's name (e.g. "Tomoko.kkm") — what the editor displays,
     # same as the pocket voice's clipName.
@@ -163,13 +166,27 @@ class CharacterStore:
     def _path_for(self, char_id: str) -> Path:
         return self.folder_for(char_id) / "character.json"
 
+    def _resolve_relative_paths(self, rec: CharacterRecord, folder: Path) -> CharacterRecord:
+        """Bundled characters (shipped with the repo) carry folder-relative model /
+        embedding paths so they survive a clone at any location; live saves write
+        absolute paths. Resolve relatives against the character's own folder at load
+        time so the rest of the app only ever sees absolute paths."""
+        if rec.model_path and not Path(rec.model_path).is_absolute():
+            rec.model_path = str(folder / rec.model_path).replace("\\", "/")
+        pk = rec.voices.get("pocket") if isinstance(rec.voices, dict) else None
+        if isinstance(pk, dict):
+            emb = str(pk.get("embeddingFile") or "")
+            if emb and not Path(emb).is_absolute():
+                pk["embeddingFile"] = str(folder / emb).replace("\\", "/")
+        return rec
+
     def list_records(self) -> list[CharacterRecord]:
         """All character records (skips files with no `id`), sorted by display name then name."""
         records: list[CharacterRecord] = []
         for path in sorted(self.dir.glob("*/character.json")):
             try:
                 with path.open("r", encoding="utf-8") as f:
-                    rec = CharacterRecord.from_wire(json.load(f))
+                    rec = self._resolve_relative_paths(CharacterRecord.from_wire(json.load(f)), path.parent)
                 if rec.id:
                     records.append(rec)
                 else:
@@ -189,13 +206,30 @@ class CharacterStore:
             return None
         try:
             with path.open("r", encoding="utf-8") as f:
-                return CharacterRecord.from_wire(json.load(f))
+                return self._resolve_relative_paths(CharacterRecord.from_wire(json.load(f)), path.parent)
         except Exception as e:  # noqa: BLE001
             print(f"[CharacterStore] Failed to read '{path.name}': {e}", file=sys.stderr)
             return None
 
     def exists(self, char_id: str) -> bool:
         return bool(char_id) and self._path_for(char_id).exists()
+
+    @staticmethod
+    def _relativize(value: str, folder: Path) -> str:
+        """Inverse of _resolve_relative_paths for the on-disk JSON: an absolute path
+        that lives inside the character's own folder is stored relative to it (the
+        character's files always sit beside character.json, so this keeps the folder
+        portable — clones, moved checkouts, bundled characters). Paths outside the
+        folder (or unresolvable ones) are kept as-is."""
+        if not value:
+            return value
+        try:
+            p = Path(value)
+            if p.is_absolute():
+                return p.resolve().relative_to(folder.resolve()).as_posix()
+        except (ValueError, OSError):
+            pass
+        return value
 
     def save(self, record: CharacterRecord) -> None:
         if not record.id:
@@ -205,11 +239,20 @@ class CharacterStore:
             record.created_at_utc = now
         record.updated_at_utc = now
 
+        # Relativize only the wire dict, not the caller's record — in-memory records
+        # keep absolute paths (Session.Begin.modelPath, TTS embedding loads, …).
+        folder = self.folder_for(record.id)
+        wire = record.to_wire()
+        wire["modelPath"] = self._relativize(wire.get("modelPath") or "", folder)
+        pk = wire.get("voices", {}).get("pocket")
+        if isinstance(pk, dict) and pk.get("embeddingFile"):
+            pk["embeddingFile"] = self._relativize(str(pk["embeddingFile"]), folder)
+
         path = self._path_for(record.id)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
         with tmp.open("w", encoding="utf-8") as f:
-            json.dump(record.to_wire(), f, ensure_ascii=False, indent=2)
+            json.dump(wire, f, ensure_ascii=False, indent=2)
         os.replace(tmp, path)  # atomic on the same filesystem
 
     def delete(self, char_id: str) -> bool:
