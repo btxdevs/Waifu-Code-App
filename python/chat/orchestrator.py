@@ -711,7 +711,7 @@ class ChatOrchestrator:
     def _build_system_prompt(self, session: ChatSession) -> str:
         c = session.character
         template = c.system_prompt_template or _load_system_prompt_template()
-        outfit_line = self._build_outfit_line(session)
+        outfit_section = self._build_outfit_section(session)
         memory_section = ""
         if self._memory_getter is not None:
             try:
@@ -727,7 +727,7 @@ class ChatOrchestrator:
             "char_def": self._substitute_persona(c.character_definition, session),
             "user": session.user_name,
             "current_status": session.current_status or "",
-            "current_outfit": outfit_line,
+            "outfit_section": outfit_section,
             "current_emotion": self._build_emotion_line(session),
             "current_time": self._build_time_line(),
             "environment": self._build_environment_line(),
@@ -735,9 +735,15 @@ class ChatOrchestrator:
             "available_tools": self._build_available_tools_str(),
         })
 
-    def _build_outfit_line(self, session: ChatSession) -> str:
+    def _build_outfit_section(self, session: ChatSession) -> str:
         char = session.character
         outfit = session.current_outfit
+        available = [o for o in (char.outfits or []) if o.outfit_name]
+        # The section owns its "Clothing status:" header (the template just holds
+        # {{outfit_section}}), so a character with no outfit data at all — e.g. a VRM model
+        # without outfit metadata — renders nothing, header included. Mirrors {{memory}}.
+        if not available and (outfit is None or not outfit.outfit_name):
+            return ""
         if outfit is None or not outfit.outfit_name:
             current = "You are not wearing any specific outfit."
         else:
@@ -748,17 +754,16 @@ class ChatOrchestrator:
                 # Outfit descriptions are character details too — resolve {{char}}/{{user}} in them.
                 "outfit_desc": self._substitute_persona(outfit.description, session),
             }).strip()
+        lines = ["Clothing status:", current]
         # When the character has more than one outfit, list the alternatives (with descriptions) so the
         # model knows what it can switch into via the ChangeOutfit tool. With one (or none), the tool
         # isn't offered, so there's nothing to list.
-        available = [o for o in (char.outfits or []) if o.outfit_name]
-        if len(available) <= 1:
-            return current
-        lines = [current, "", "Your available outfits (switch with the ChangeOutfit tool):"]
-        for o in available:
-            marker = " (currently worn)" if outfit is not None and o.outfit_name == outfit.outfit_name else ""
-            desc = self._substitute_persona(o.description, session).strip()
-            lines.append(f'  - "{o.outfit_name}"{marker}' + (f": {desc}" if desc else ""))
+        if len(available) > 1:
+            lines += ["", "Your available outfits (switch with the ChangeOutfit tool):"]
+            for o in available:
+                marker = " (currently worn)" if outfit is not None and o.outfit_name == outfit.outfit_name else ""
+                desc = self._substitute_persona(o.description, session).strip()
+                lines.append(f'  - "{o.outfit_name}"{marker}' + (f": {desc}" if desc else ""))
         return "\n".join(lines)
 
     def _build_emotion_line(self, session: ChatSession) -> str:

@@ -340,7 +340,10 @@ class TurnMixin:
 
             # Apply the outfit NOW — session state (so this turn's system prompt already describes
             # the new outfit), the Unity avatar, and the renderer's worn-outfit marker. Mirrors
-            # what the AI's ChangeOutfit tool path does in _on_orch_executed_tool.
+            # what the AI's ChangeOutfit tool path does in _on_orch_executed_tool. The previous
+            # name is captured first so the reaction note can say what was worn before (the
+            # refreshed system prompt only knows the new state).
+            previous_name = s.current_outfit.outfit_name if s.current_outfit else ""
             s.current_outfit = target
             self._send_envelope(T_AVATAR_APPLY_OUTFIT, {
                 "outfitName": target.outfit_name,
@@ -375,8 +378,14 @@ class TurnMixin:
 
             self._current_turn_task = asyncio.current_task()
             try:
-                note = (f'The user has changed your outfit — you are now wearing '
-                        f'"{target.outfit_name}". React to it.')
+                # Same from/to shape as the ChangeOutfit tool's result, so the model knows what
+                # it was wearing before (the system prompt only describes the new state).
+                if previous_name:
+                    note = (f'The user has changed your outfit — you were wearing "{previous_name}" '
+                            f'and are now wearing "{target.outfit_name}". React to it.')
+                else:
+                    note = (f'The user has changed your outfit — you are now wearing '
+                            f'"{target.outfit_name}". React to it.')
                 await self.orchestrator.submit_message(
                     self._system_message(note), hidden=True,
                     outfit_change=target.outfit_name)

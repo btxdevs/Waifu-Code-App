@@ -72,8 +72,7 @@ the full text of a memory listed above when its summary isn't enough. Don't save
 Live situation / current status:
 {{current_status}}
 
-Clothing status:
-{{current_outfit}}
+{{outfit_section}}
 
 Current emotional state:
 {{current_emotion}}
