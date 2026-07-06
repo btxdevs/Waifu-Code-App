@@ -72,7 +72,7 @@ The Unity player renders her in a transparent, always-on-top window — she stan
 └────────────────────────────┘     /v1/chat/completions       LLM endpoint
 ```
 
-- Desktop host: **Python + [pywebview](https://pywebview.flowrl.com/)** (WebView2); UI: **React 18 + TypeScript + Vite**. No Electron.
+- Desktop host: **Python + [pywebview](https://pywebview.flowrl.com/)** (WebView2); UI: **React 18 + TypeScript + Vite**.
 - **STT**: local streaming recognition via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (default: NVIDIA Nemotron Streaming 0.6B) with Silero VAD for hands-free segmentation, wake word, and TTS echo suppression.
 - **TTS**: local [pocket-tts-onnx](https://huggingface.co/KevinAHM/pocket-tts-onnx) with per-character voice cloning, or any ElevenLabs-compatible HTTP endpoint. Speech models auto-download on first run.
 - **Agent tools**: `Read` / `Write` / `Edit` / `Glob` / `Grep` (vendored ripgrep) / `PowerShell` / `Open` / `TodoWrite` / `WebSearch` ([ddgs](https://github.com/deedy5/ddgs), keyless) / `WebFetch` (local HTML→markdown) / `Screenshot` / `LookAtYourself` / OCR fallback for non-vision models / background sub-agents (researcher, explorer, general).
