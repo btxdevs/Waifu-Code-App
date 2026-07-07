@@ -191,6 +191,17 @@ class OrchestrationMixin:
         stores raw tags in session.history (LLM context) but the renderer only ever
         sees clean text. The token also feeds the speech pipeline so TTS can run in
         parallel."""
+        # Touch turns: catch the [Reject] marker as soon as it streams (it's required at the very
+        # start of the reply) and force-end the touch + play the dislike right away — so the reaction
+        # lands as the refusal begins rather than after the first sentence finishes speaking. Fires
+        # once; scans only the leading text (the marker is at the head), then stops accumulating.
+        if (self._touch_turn_zone is not None and not self._touch_reject_sent
+                and len(self._touch_reply_head) < 80):
+            self._touch_reply_head += delta
+            if self._reply_rejects_touch(self._touch_reply_head):
+                self._touch_reject_sent = True
+                self._send_envelope(T_AVATAR_END_TOUCH, {"reason": "reject", "zone": self._touch_turn_zone})
+
         if self.voice_enabled and self.speech is not None:
             # Speech pipeline owns its own emotion filter for per-sentence emotion
             # binding; raw delta is fine here.

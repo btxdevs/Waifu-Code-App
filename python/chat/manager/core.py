@@ -218,6 +218,16 @@ class ChatManager(SessionMixin, TurnMixin, LibraryMixin, HistoryMixin, Orchestra
         self._touch_busy: bool = False
         self._touch_active: bool = False
 
+        # Early-rejection detection for the in-flight touch turn. [Reject] is required at the very
+        # start of the reply, so we watch the streamed tokens and fire Avatar.EndTouch the moment it
+        # appears — the dislike then plays as the refusal BEGINS, not after the first sentence is
+        # spoken. `_touch_turn_zone` is the zone of the running touch turn (None otherwise);
+        # `_touch_reject_sent` guards against a double-send; `_touch_reply_head` buffers the leading
+        # raw text we scan for the marker.
+        self._touch_turn_zone: str | None = None
+        self._touch_reject_sent: bool = False
+        self._touch_reply_head: str = ""
+
         # Background UwU helpers (see _tasks.py): live task records keyed by id, plus the
         # ids whose reports are waiting to be folded into a notification turn. Per-session,
         # not persisted — _reset_session_bookkeeping dismisses everything.

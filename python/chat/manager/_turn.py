@@ -175,8 +175,10 @@ class TurnMixin:
     # physical interaction is over. Not shown in the chat.
     _TOUCH_ENDED_NOTE = "The user has stopped touching you."
 
-    # The assistant emits this marker (anywhere in its reply) to refuse a caress. It's stripped from the
-    # visible/spoken text by the emotion-tag filter (any [..] is removed), so we read it off the raw reply.
+    # The assistant emits [Reject] (anywhere in its reply) to refuse a caress. It's hidden from the
+    # visible/spoken text like any [..] tag, so we read it off the RAW reply. As a registered control
+    # marker (see text.CONTROL_MARKERS) it's also KEPT in stored history on a touch turn — but stripped
+    # if emitted on a non-touch turn. Case-insensitive so [Reject]/[reject] both match.
     _TOUCH_REJECT_REGEX = re.compile(r"\[\s*reject\s*\]", re.IGNORECASE)
 
     def _touch_note(self, zone: str) -> str:
@@ -246,6 +248,13 @@ class TurnMixin:
             self._pending_report_ids_this_turn.clear()
             self._pending_todo_snapshot_id_this_turn = None
 
+            # Arm early-rejection detection: _on_orch_token watches the streamed reply and fires
+            # Avatar.EndTouch the moment [Reject] appears (it's required at the reply's start), so the
+            # dislike plays as the refusal begins rather than after the first sentence is spoken.
+            self._touch_turn_zone = zone
+            self._touch_reject_sent = False
+            self._touch_reply_head = ""
+
             # Show the touch as a compact, rewindable tool-activity row. The hidden touch note is the very
             # next thing appended to history (by submit_message), so its eventual index is the current length.
             self._push_entry(HistoryEntry(
@@ -284,8 +293,11 @@ class TurnMixin:
                 if not self.voice_enabled:
                     self._send_envelope(T_LIPSYNC_TEXT_END, {})
 
-            # Rejection: the reply asked to stop. Unity plays the dislike body clip + force-ends touch mode.
-            if reply is not None and self._reply_rejects_touch(reply.reply):
+            # Rejection fallback: normally _on_orch_token already fired Avatar.EndTouch mid-stream
+            # (early detection). This only catches the rare case where that didn't run — e.g. the
+            # marker wasn't at the head — so we still force-end the touch once.
+            if (reply is not None and not self._touch_reject_sent
+                    and self._reply_rejects_touch(reply.reply)):
                 self._send_envelope(T_AVATAR_END_TOUCH, {"reason": "reject", "zone": zone})
 
             # Mark the caress as ongoing so the next typed message gets a "touching ended" note.
@@ -293,6 +305,7 @@ class TurnMixin:
             self._persist()
         finally:
             self._touch_busy = False
+            self._touch_turn_zone = None   # disarm early-rejection detection for this turn
         # Any background helper reports that landed while this turn ran deliver now.
         self._drain_bg_notifications()
 

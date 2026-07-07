@@ -24,7 +24,7 @@ from .config import ChatBackendConfig
 from .llm_client import LlmClient, LlmClientError
 from .models import ChatMessage, EmotionEntry, ExecutedToolCall, LlmResponse, StructuredReply, ToolSchema
 from .speech import SentenceSpeechPipeline
-from .text import rewrite_tags_for_history
+from .text import rewrite_tags_for_history, filter_control_markers, is_control_marker
 
 
 # ----------------------------------------------------------------------------
@@ -296,6 +296,9 @@ class ChatOrchestrator:
         self.session: ChatSession | None = None
         # Set during a turn; the orchestrator monitors it to short-circuit on Chat.Stop.
         self._cancel_event: asyncio.Event | None = None
+        # The context keys active for the turn currently running (e.g. {"touch"} on a touch-triggered
+        # turn). Control markers keep/strip against this — see filter_control_markers.
+        self._turn_contexts: set[str] = set()
 
     # ------------------------------------------------------------------------
     # Session lifecycle
@@ -434,6 +437,11 @@ class ChatOrchestrator:
         if not user_message or not user_message.strip():
             self._fire_error("Turn message is empty.")
             return None
+
+        # Which control-marker contexts are legitimate this turn: a touch-triggered turn (touch_zone
+        # set) makes [Reject] valid, so it's kept in history; otherwise the model emitted it out of
+        # context and it's stripped. Add future context keys here as new markers are introduced.
+        self._turn_contexts = {"touch"} if touch_zone else set()
 
         # Score memory relevance against this turn's message (used by _build_system_prompt below).
         self._memory_query = user_message
@@ -841,6 +849,9 @@ class ChatOrchestrator:
                     f"[ChatOrchestrator] Removed unknown emotion tag from history: [{raw}]", file=sys.stderr
                 ),
             )
+        # Keep control markers ([Reject]…) in history only when valid for this turn's context;
+        # strip ones emitted out of context. Runs regardless of whether emotion labels exist.
+        msg.content = filter_control_markers(msg.content, self._turn_contexts)
         msg.content = _BLANK_LINE_REGEX.sub("\n", msg.content)
 
     def _update_current_emotion_from_message(self, msg: ChatMessage) -> None:
@@ -853,7 +864,10 @@ class ChatOrchestrator:
         if self.session is None or msg is None or not msg.content:
             return
         labels = _EMOTION_TAG_REGEX.findall(msg.content)
-        last = next((lbl.strip() for lbl in reversed(labels) if lbl.strip()), "")
+        # Skip control markers ([Reject]…) — they're kept in history but are not emotions, so a
+        # trailing [Reject] must not become the session's current emotion.
+        last = next((lbl.strip() for lbl in reversed(labels)
+                     if lbl.strip() and not is_control_marker(lbl)), "")
         if last:
             self.session.current_emotions = [EmotionEntry(label=last)]
 

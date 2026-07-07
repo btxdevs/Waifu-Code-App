@@ -37,6 +37,47 @@ _TAG_BODY_MARGIN = 16
 _TAG_REGEX = re.compile(r"\[([^\[\]]*)\]")
 
 
+# ============================================================================
+# Control markers
+# ============================================================================
+# Bracketed tokens that are NOT emotions but carry a side-effect signal the app acts on
+# (e.g. [Reject] refuses an in-progress caress — see manager._turn). Like emotion tags they are
+# ALWAYS hidden from the chat bubble and never sent to TTS. UNLIKE emotion tags they are kept
+# VERBATIM in the stored history — but only when the turn's context makes them legitimate (a
+# [Reject] is only valid on a touch-triggered turn). Emitted out of context they're stripped from
+# history like a misused tag, so the save file only ever shows markers that actually fired.
+# Extend this map to add new markers; keyed by the lowercased marker name.
+#   canon   — the casing kept in history (the model is told to emit this form).
+#   context — the turn-context key that must be active for the marker to be valid.
+CONTROL_MARKERS: dict[str, dict[str, str]] = {
+    "reject": {"canon": "Reject", "context": "touch"},
+}
+
+
+def is_control_marker(label: str) -> bool:
+    """True if `label` (a tag body, no brackets) is a recognized control marker."""
+    return label.strip().casefold() in CONTROL_MARKERS
+
+
+def filter_control_markers(text: str, active_contexts: set[str] | None) -> str:
+    """Resolve control-marker tags against the turn's active contexts: a marker whose context is
+    active is kept (normalized to its canonical casing); one emitted out of context is removed.
+    Emotion and other tags are left untouched. Runs on the message stored to history."""
+    if not text:
+        return text
+    active = active_contexts or set()
+
+    def _sub(m: re.Match) -> str:
+        marker = CONTROL_MARKERS.get(m.group(1).strip().casefold())
+        if marker is None:
+            return m.group(0)  # not a control marker — leave emotion/other tags as-is
+        if marker["context"] in active:
+            return f"[{marker['canon']}]"  # valid for this turn → keep, normalized casing
+        return ""  # emitted out of context → strip like a misused tag
+
+    return _TAG_REGEX.sub(_sub, text)
+
+
 class EmotionStreamFilter:
     """Stateful filter that you feed raw token chunks. `feed` returns the cleaned text
     safe to emit; `flush` returns whatever buffered bytes turned out NOT to be a tag.
@@ -147,6 +188,10 @@ class EmotionStreamFilter:
     def _try_fire_emotion(self, label: str, position: int) -> bool:
         if not label:
             return False
+        if label.casefold() in CONTROL_MARKERS:
+            # A control marker (e.g. [Reject]) — swallow it (stripped from the TTS/display stream
+            # like any tag) but never treat it as an emotion or log it as unknown.
+            return True
         if self._whitelist is None:
             canonical = label
         else:
@@ -216,6 +261,8 @@ def rewrite_tags_for_history(
             if on_removed:
                 on_removed(raw)
             return ""
+        if raw.casefold() in CONTROL_MARKERS:
+            return m.group(0)  # control marker, not an emotion — filter_control_markers judges it
         canonical, exact = _resolve_against_whitelist(raw, whitelist)
         if canonical is None:
             if on_removed:
