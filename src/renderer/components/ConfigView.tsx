@@ -13,6 +13,24 @@ interface Props {
   onClose: () => void;
 }
 
+/** Chat-completions endpoints of the common OpenAI-compatible providers, so picking one
+ *  fills the API URL. "Custom" keeps the URL free-form for local servers (Ollama,
+ *  LM Studio on another port) or providers not listed here. */
+const LLM_PROVIDER_PRESETS: { label: string; url: string; modelHint: string }[] = [
+  { label: 'DeepSeek', url: 'https://api.deepseek.com/chat/completions', modelHint: 'deepseek-v4-flash' },
+  { label: 'OpenAI', url: 'https://api.openai.com/v1/chat/completions', modelHint: 'gpt-5.5' },
+  { label: 'Anthropic', url: 'https://api.anthropic.com/v1/chat/completions', modelHint: 'claude-sonnet-5' },
+  { label: 'Google Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', modelHint: 'gemini-3.5-flash' },
+  { label: 'OpenRouter', url: 'https://openrouter.ai/api/v1/chat/completions', modelHint: 'z-ai/glm-5' },
+  { label: 'xAI (Grok)', url: 'https://api.x.ai/v1/chat/completions', modelHint: 'grok-4.5' },
+  { label: 'Groq', url: 'https://api.groq.com/openai/v1/chat/completions', modelHint: 'openai/gpt-oss-120b' },
+  { label: 'Mistral', url: 'https://api.mistral.ai/v1/chat/completions', modelHint: 'mistral-large-latest' },
+  { label: 'Z.AI (GLM)', url: 'https://api.z.ai/api/paas/v4/chat/completions', modelHint: 'glm-5.2' },
+  { label: 'Moonshot (Kimi)', url: 'https://api.moonshot.ai/v1/chat/completions', modelHint: 'kimi-k2.6' },
+  { label: 'Ollama (local)', url: 'http://127.0.0.1:11434/v1/chat/completions', modelHint: 'llama3.1' },
+  { label: 'LM Studio (local)', url: 'http://127.0.0.1:1234/v1/chat/completions', modelHint: 'qwen3-8b' },
+];
+
 /** In-chat-window settings panel. Loads on mount, edits a local copy of the
  *  config, and writes back via `window.app.saveConfig`. The two on-disk
  *  files (llm.config.json + app.config.json) are merged into one shape
@@ -30,6 +48,9 @@ export function ConfigView({ onClose }: Props) {
   const [showElevenKey, setShowElevenKey] = useState(false);
   // Which LLM config the LLM tab is currently editing (id into config.llm.configs).
   const [selectedLlmId, setSelectedLlmId] = useState<string>('');
+  // The provider dropdown derives from api_url; this keeps it on "Custom" after the user
+  // picks Custom while the URL still matches a preset (until they switch config/preset).
+  const [llmUrlCustom, setLlmUrlCustom] = useState(false);
   // Settings are split across tabs (the list grows as features are added). Add new tabs here.
   const [tab, setTab] = useState<'general' | 'llm' | 'tts'>('general');
 
@@ -44,6 +65,9 @@ export function ConfigView({ onClose }: Props) {
       .catch(e => { if (!cancelled) setLoadError(String(e?.message ?? e)); });
     return () => { cancelled = true; };
   }, []);
+
+  // Each config derives its own provider selection from its URL.
+  useEffect(() => { setLlmUrlCustom(false); }, [selectedLlmId]);
 
   // Patch the CURRENTLY-SELECTED LLM config (within config.llm.configs).
   const patchLlm = useCallback((patch: Partial<LlmConfigBlock>) => {
@@ -204,6 +228,11 @@ export function ConfigView({ onClose }: Props) {
   // The LLM config the LLM tab edits — the selected one, falling back to the first.
   const selectedLlm = config.llm.configs.find(c => c.id === selectedLlmId) ?? config.llm.configs[0];
   const isDefaultLlm = !!selectedLlm && config.llm.defaultId === selectedLlm.id;
+  // Provider dropdown state: the preset whose endpoint matches the current URL, unless the
+  // user explicitly chose Custom.
+  const llmPreset = llmUrlCustom
+    ? undefined
+    : LLM_PROVIDER_PRESETS.find(p => p.url === selectedLlm?.api_url);
 
   return (
     <div className="config-panel">
@@ -336,12 +365,35 @@ export function ConfigView({ onClose }: Props) {
         <section className="config-section">
           <h2>Backend</h2>
           <label className="config-field">
+            <span>Provider</span>
+            <select
+              value={llmPreset ? llmPreset.url : 'custom'}
+              onChange={e => {
+                const preset = LLM_PROVIDER_PRESETS.find(p => p.url === e.target.value);
+                setLlmUrlCustom(!preset);
+                if (preset) patchLlm({ api_url: preset.url });
+              }}
+            >
+              {LLM_PROVIDER_PRESETS.map(p => (
+                <option key={p.url} value={p.url}>{p.label}</option>
+              ))}
+              <option value="custom">Custom…</option>
+            </select>
+            <span className="config-hint">
+              Picking a provider fills the endpoint URL below. Use Custom for a local server or any
+              other OpenAI-compatible API.
+            </span>
+          </label>
+          <label className="config-field">
             <span>API URL</span>
             <input
               type="text"
               value={selectedLlm.api_url}
-              onChange={e => patchLlm({ api_url: e.target.value })}
-              placeholder="https://api.deepseek.com/v1/chat/completions"
+              onChange={e => {
+                setLlmUrlCustom(false); // re-derive the provider from whatever they type
+                patchLlm({ api_url: e.target.value });
+              }}
+              placeholder="https://api.deepseek.com/chat/completions"
             />
           </label>
           <label className="config-field">
@@ -369,7 +421,7 @@ export function ConfigView({ onClose }: Props) {
               type="text"
               value={selectedLlm.model}
               onChange={e => patchLlm({ model: e.target.value })}
-              placeholder="deepseek-chat"
+              placeholder={llmPreset?.modelHint ?? 'deepseek-chat'}
             />
           </label>
           <div className="config-row config-row-split">
