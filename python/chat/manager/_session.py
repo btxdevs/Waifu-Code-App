@@ -453,9 +453,10 @@ class SessionMixin:
         self._reset_streaming_state()
 
     def _reset_streaming_state(self) -> None:
-        """Drop the per-round emotion filter and clear the new-entry flag. Called
-        between sessions / on rollback / at the start of each user turn."""
+        """Drop the per-round emotion filter + sanitizer and clear the new-entry flag.
+        Called between sessions / on rollback / at the start of each user turn."""
         self._text_filter = None
+        self._text_sanitizer = None
         self._needs_new_assistant_entry = False
 
     async def resync_unity_session(self) -> None:

@@ -278,6 +278,277 @@ def rewrite_tags_for_history(
 
 
 # ============================================================================
+# SpokenTextSanitizer
+# ============================================================================
+# The system prompt bans markdown and *stage directions* in spoken replies, but no prompt
+# wording gets 100% compliance — this filter enforces the format deterministically on the
+# way out. It runs AFTER EmotionStreamFilter (so it never sees [LABEL] tags mid-parse;
+# brackets pass through untouched) in front of every consumer of clean text: the renderer
+# bubble, text lip-sync, and the TTS sentence splitter. `sanitize_spoken_text` applies the
+# same rules batch-wise to the message stored in LLM history, so the model only ever sees
+# compliant copies of its own replies and self-corrects — same trick as
+# rewrite_tags_for_history.
+#
+# Rules:
+#   *stage direction*      → removed entirely. Roleplay models use single-star spans for
+#                            actions, not emphasis; spans up to _STAR_SPAN_CAP chars are
+#                            treated as actions and dropped. An unclosed span releases as
+#                            plain text (the '*' itself is still dropped).
+#   **bold** / __bold__    → markers stripped, text kept.
+#   `code`                 → backticks stripped, text kept.
+#   ``` fence lines        → the marker line is dropped whole (fenced CONTENT lines still
+#                            stream through as plain text).
+#   line-start "# ", "> ", "- ", "+ ", "* ", "1. ", "1) " → marker stripped.
+#   lone '*'               → dropped ('*' and '`' never reach the output; a math "2 * 3"
+#                            degrades to "2 3", acceptable for speech).
+# Whitespace next to a removed span is collapsed so no double spaces are left behind.
+
+_STAR_SPAN_CAP = 64    # max chars a *span* may buffer before we decide it isn't a stage direction
+_PAIR_SPAN_CAP = 128   # same for **bold** / __bold__
+_TICK_SPAN_CAP = 128   # same for `code`
+
+
+class SpokenTextSanitizer:
+    """Stateful streaming markdown/stage-direction stripper. Feed raw chunks (already
+    emotion-filtered), get cleaned text back; `flush` releases whatever buffered chars
+    turned out not to be markup. Buffer-safe across chunk boundaries, like
+    EmotionStreamFilter."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self) -> None:
+        self._mode = "normal"       # normal | star_open | star | pair | tick_open | tick | fence | linehead
+        self._pend: list[str] = []  # buffered chars of the construct being decided
+        self._marker = ""           # pair mode: '*' or '_'
+        self._marker_seen = False   # pair mode: previous char was the marker (half of a close)
+        self._ticks = 0             # tick_open mode: consecutive backticks seen
+        self._at_line_start = True
+        self._collapse_ws = False
+        self._last_char = ""
+
+    # ---- output helpers ----------------------------------------------------
+
+    def _emit(self, s: str, out: list[str]) -> None:
+        """Emit text, collapsing whitespace adjacent to a just-removed construct (same
+        seam handling as EmotionStreamFilter._emit_text)."""
+        for ch in s:
+            if self._collapse_ws:
+                if ch.isspace() and (self._last_char == "" or self._last_char.isspace()):
+                    continue
+                self._collapse_ws = False
+            out.append(ch)
+            self._last_char = ch
+            self._at_line_start = ch == "\n"
+
+    def _release(self, out: list[str], drop_pend: bool = False) -> None:
+        """Leave the current construct mode, emitting the buffered chars as plain text
+        (unless `drop_pend`)."""
+        if self._pend and not drop_pend:
+            pend = "".join(self._pend)
+            self._pend = []
+            self._emit(pend, out)
+        else:
+            self._pend = []
+        self._mode = "normal"
+        self._marker_seen = False
+
+    # ---- public API ----------------------------------------------------------
+
+    def feed(self, chunk: str) -> str:
+        if not chunk:
+            return ""
+        out: list[str] = []
+        for ch in chunk:
+            self._step(ch, out)
+        return "".join(out)
+
+    def flush(self) -> str:
+        out: list[str] = []
+        # Unclosed spans release their inner text; bare markers (star_open / tick_open /
+        # fence) just vanish.
+        self._release(out, drop_pend=self._mode in ("star_open", "tick_open", "fence"))
+        return "".join(out)
+
+    # ---- state machine -------------------------------------------------------
+
+    def _step(self, c: str, out: list[str]) -> None:
+        mode = self._mode
+        if mode == "normal":
+            self._step_normal(c, out)
+        elif mode == "star_open":
+            self._step_star_open(c, out)
+        elif mode == "star":
+            self._step_star(c, out)
+        elif mode == "pair":
+            self._step_pair(c, out)
+        elif mode == "tick_open":
+            self._step_tick_open(c, out)
+        elif mode == "tick":
+            self._step_tick(c, out)
+        elif mode == "fence":
+            self._step_fence(c)
+        elif mode == "linehead":
+            self._step_linehead(c, out)
+
+    def _step_normal(self, c: str, out: list[str]) -> None:
+        if c == "*":
+            self._mode = "star_open"
+            return
+        if c == "`":
+            self._mode = "tick_open"
+            self._ticks = 1
+            return
+        if c == "_":
+            # Only '__' pairs are markup; a single '_' is prose (snake_case…). Reuse the
+            # pair machinery via a tiny lookahead: buffer the '_' in linehead-style pend.
+            self._mode = "linehead"
+            self._pend = ["_"]
+            return
+        if self._at_line_start and (c in "#>-+" or c.isdigit()):
+            self._mode = "linehead"
+            self._pend = [c]
+            return
+        self._emit(c, out)
+
+    def _step_star_open(self, c: str, out: list[str]) -> None:
+        if c == "*":
+            self._mode = "pair"
+            self._marker = "*"
+            self._marker_seen = False
+            self._pend = []
+            return
+        if c == " " and self._at_line_start:
+            # "* " at line start = bullet marker → drop marker and space.
+            self._mode = "normal"
+            self._at_line_start = False
+            return
+        if c.isspace():
+            # Lone '*' ("2 * 3") — drop the star, keep the whitespace.
+            self._mode = "normal"
+            self._collapse_ws = True
+            self._emit(c, out)
+            return
+        self._mode = "star"
+        self._pend = [c]
+
+    def _step_star(self, c: str, out: list[str]) -> None:
+        if c == "*":
+            # Closed single-star span → stage direction: drop it whole.
+            self._pend = []
+            self._mode = "normal"
+            self._collapse_ws = True
+            return
+        if c == "\n" or len(self._pend) >= _STAR_SPAN_CAP:
+            self._release(out)      # not a stage direction after all — plain text
+            self._step(c, out)
+            return
+        self._pend.append(c)
+
+    def _step_pair(self, c: str, out: list[str]) -> None:
+        if c == self._marker:
+            if self._marker_seen:   # full "**" / "__" close → emphasis: keep inner text
+                self._release(out)
+                return
+            self._marker_seen = True
+            return
+        self._marker_seen = False   # lone marker inside the span — drop it
+        if c == "\n" or len(self._pend) >= _PAIR_SPAN_CAP:
+            self._release(out)
+            self._step(c, out)
+            return
+        self._pend.append(c)
+
+    def _step_tick_open(self, c: str, out: list[str]) -> None:
+        if c == "`":
+            self._ticks += 1
+            if self._ticks >= 3:
+                # "```" — a fence marker line: drop it whole (only ever line-start in
+                # practice; a mid-line "```" degrades to the same handling).
+                self._mode = "fence"
+            return
+        # 1 backtick → inline code span; 2 backticks ("``x``" style) → same, the second
+        # pair of ticks at close just re-enters tick_open and vanishes.
+        self._mode = "tick"
+        self._pend = []
+        self._step(c, out)
+
+    def _step_tick(self, c: str, out: list[str]) -> None:
+        if c == "`":
+            self._release(out)      # close → keep inner text, ticks vanish
+            return
+        if c == "\n" or len(self._pend) >= _TICK_SPAN_CAP:
+            self._release(out)
+            self._step(c, out)
+            return
+        self._pend.append(c)
+
+    def _step_fence(self, c: str) -> None:
+        # Drop everything through end-of-line, newline included (the marker line
+        # vanishes; the preceding char was already a line break).
+        if c == "\n":
+            self._mode = "normal"
+            self._at_line_start = True
+
+    def _step_linehead(self, c: str, out: list[str]) -> None:
+        """Deciding whether the line's first chars are a markdown marker. `_pend` holds
+        the candidate ('#'+, '>', '-', '+', digits[./)], or a lone '_' from anywhere)."""
+        first = self._pend[0]
+        if first == "_":
+            if c == "_":            # "__" → emphasis pair
+                self._mode = "pair"
+                self._marker = "_"
+                self._marker_seen = False
+                self._pend = []
+                return
+            self._release(out)      # single '_' is prose
+            self._step(c, out)
+            return
+        if first == "#":
+            if c == "#" and len(self._pend) < 6:
+                self._pend.append(c)
+                return
+            if c == " ":            # "# " header marker → drop it
+                self._release(out, drop_pend=True)
+                self._at_line_start = False
+                return
+            self._release(out)      # "#hashtag" etc. — plain text
+            self._step(c, out)
+            return
+        if first in ">-+":
+            if c == " " and len(self._pend) == 1:   # "> " / "- " / "+ " → drop marker
+                self._release(out, drop_pend=True)
+                self._at_line_start = False
+                return
+            self._release(out)
+            self._step(c, out)
+            return
+        # Digits: numbered-list marker is digits + '.' or ')' + space.
+        if c.isdigit() and self._pend[-1].isdigit() and len(self._pend) < 4:
+            self._pend.append(c)
+            return
+        if c in ".)" and self._pend[-1].isdigit():
+            self._pend.append(c)
+            return
+        if c == " " and self._pend[-1] in ".)":     # "1. " / "1) " → drop marker
+            self._release(out, drop_pend=True)
+            self._at_line_start = False
+            return
+        self._release(out)          # "3.14…", "42 things", … — plain text
+        self._step(c, out)
+
+
+def sanitize_spoken_text(text: str) -> str:
+    """Batch form of SpokenTextSanitizer: strip markdown and *stage directions* from a
+    complete piece of text. [LABEL] tags and control markers pass through untouched, so
+    this is safe to run on history messages that still carry their emotion tags."""
+    if not text:
+        return text
+    s = SpokenTextSanitizer()
+    return s.feed(text) + s.flush()
+
+
+# ============================================================================
 # SentenceSplitter
 # ============================================================================
 

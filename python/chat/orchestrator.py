@@ -24,7 +24,9 @@ from .config import ChatBackendConfig
 from .llm_client import LlmClient, LlmClientError
 from .models import ChatMessage, EmotionEntry, ExecutedToolCall, LlmResponse, StructuredReply, ToolSchema
 from .speech import SentenceSpeechPipeline
-from .text import rewrite_tags_for_history, filter_control_markers, is_control_marker
+from .text import (
+    rewrite_tags_for_history, filter_control_markers, is_control_marker, sanitize_spoken_text,
+)
 
 
 # ----------------------------------------------------------------------------
@@ -852,6 +854,11 @@ class ChatOrchestrator:
         # Keep control markers ([Reject]…) in history only when valid for this turn's context;
         # strip ones emitted out of context. Runs regardless of whether emotion labels exist.
         msg.content = filter_control_markers(msg.content, self._turn_contexts)
+        # Strip markdown / *stage directions* from the STORED message too (the live stream was
+        # already sanitized on its way to the renderer/TTS). The model imitates its own recent
+        # replies, so one markdown-y message left in history snowballs into every later turn;
+        # storing the compliant version makes it self-correct instead. Tags survive untouched.
+        msg.content = sanitize_spoken_text(msg.content)
         msg.content = _BLANK_LINE_REGEX.sub("\n", msg.content)
 
     def _update_current_emotion_from_message(self, msg: ChatMessage) -> None:

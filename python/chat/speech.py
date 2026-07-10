@@ -3,7 +3,9 @@ Assets/Scripts/Chat/Backend/SentenceSpeechPipeline.cs — but much smaller, beca
 the AudioSource / StreamingAudioBuffer / first-audible-sample tracking stays in Unity.
 Python's job is:
 
-  1. Feed raw LLM tokens through `EmotionStreamFilter` (strips [LABEL] tags).
+  1. Feed raw LLM tokens through `EmotionStreamFilter` (strips [LABEL] tags), then
+     `SpokenTextSanitizer` (strips markdown / *stage directions* the prompt bans but the
+     model emits anyway — otherwise TTS reads the markers aloud).
   2. Sentence-split the cleaned text.
   3. Push each sentence into a TTS queue.
   4. The pump pulls sentences in order, fires the per-sentence emotion (Avatar.ApplyEmotion),
@@ -25,7 +27,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
-from .text import EmotionStreamFilter, flush_remaining, try_consume
+from .text import EmotionStreamFilter, SpokenTextSanitizer, flush_remaining, try_consume
 
 
 # Callback aliases — keep signatures explicit so readers don't have to chase types.
@@ -61,6 +63,7 @@ class SentenceSpeechPipeline:
 
         # Per-session state — reset on every begin_session.
         self._emotion_filter: EmotionStreamFilter | None = None
+        self._sanitizer: SpokenTextSanitizer | None = None
         self._text_buffer: list[str] = []          # cleaned tokens awaiting sentence boundary
         self._queue: deque[_PendingSentence] = deque()
         self._next_sentence_emotion: str | None = None  # latched by EmotionStreamFilter callback
@@ -89,6 +92,7 @@ class SentenceSpeechPipeline:
             allowed_labels=self._allowed_emotions,
             on_emotion=self._on_emotion_in_stream,
         )
+        self._sanitizer = SpokenTextSanitizer()
         self._text_buffer.clear()
         self._queue.clear()
         self._next_sentence_emotion = None
@@ -109,6 +113,8 @@ class SentenceSpeechPipeline:
         if not self._session_active or not raw_token:
             return
         cleaned = self._emotion_filter.feed(raw_token) if self._emotion_filter else raw_token
+        if cleaned and self._sanitizer is not None:
+            cleaned = self._sanitizer.feed(cleaned)
         if not cleaned:
             return
         self._text_buffer.extend(cleaned)
@@ -120,11 +126,13 @@ class SentenceSpeechPipeline:
         half-spoken sentence while a tool blocks) and on end-of-stream."""
         if not self._session_active:
             return
-        # Emotion filter may have a trailing "[" buffered — release it.
-        if self._emotion_filter is not None:
-            tail = self._emotion_filter.flush()
-            if tail:
-                self._text_buffer.extend(tail)
+        # Emotion filter may have a trailing "[" buffered — release it through the
+        # sanitizer, then release the sanitizer's own buffered construct (if any).
+        tail = self._emotion_filter.flush() if self._emotion_filter is not None else ""
+        if self._sanitizer is not None:
+            tail = self._sanitizer.feed(tail) + self._sanitizer.flush()
+        if tail:
+            self._text_buffer.extend(tail)
         self._drain_sentences()
         leftover = flush_remaining(self._text_buffer)
         if leftover:

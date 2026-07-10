@@ -39,7 +39,7 @@ from ..save_load import (
     ChatSaveData, ReportEntry, SaveLoadManager, TodoSnapshotEntry, TodoItemSnapshot, TurnSnapshot,
 )
 from ..speech import SentenceSpeechPipeline
-from ..text import EmotionStreamFilter
+from ..text import EmotionStreamFilter, SpokenTextSanitizer
 from .protocol import *  # noqa: F401,F403
 from .view_models import (
     HistoryEntry, ReportRef, TodoItemRef,
@@ -172,6 +172,7 @@ class ChatManager(SessionMixin, TurnMixin, LibraryMixin, HistoryMixin, Orchestra
         # chunks doesn't leak across rounds).
         self._needs_new_assistant_entry: bool = False
         self._text_filter: EmotionStreamFilter | None = None
+        self._text_sanitizer: SpokenTextSanitizer | None = None  # chained after _text_filter
 
         # Pending Character.* RPC replies from Unity (now just Character.InspectModelEmotions).
         self._character_futures: dict[str, asyncio.Future[dict]] = {}

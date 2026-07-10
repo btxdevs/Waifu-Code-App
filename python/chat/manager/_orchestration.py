@@ -19,7 +19,7 @@ from ..save_load import (
     ChatSaveData, ReportEntry, SaveLoadManager, TodoSnapshotEntry, TodoItemSnapshot, TurnSnapshot,
 )
 from ..speech import SentenceSpeechPipeline
-from ..text import EmotionStreamFilter
+from ..text import EmotionStreamFilter, SpokenTextSanitizer
 from .protocol import *  # noqa: F401,F403  (envelope-type + callable-alias constants)
 from .view_models import (
     HistoryEntry, ReportRef, TodoItemRef,
@@ -208,16 +208,21 @@ class OrchestrationMixin:
             self.speech.feed_token(delta)
 
         if self._needs_new_assistant_entry and self._text_filter is None:
-            # New round — fresh filter so partial-tag state doesn't leak between rounds.
+            # New round — fresh filter + sanitizer so partial-construct state doesn't
+            # leak between rounds.
             labels = self.orchestrator.effective_emotion_labels() if self.orchestrator else []
             self._text_filter = EmotionStreamFilter(
                 allowed_labels=labels or None,
                 on_emotion=self._on_text_filter_emotion,
             )
+            self._text_sanitizer = SpokenTextSanitizer()
 
         cleaned = self._text_filter.feed(delta) if self._text_filter else delta
+        if cleaned and self._text_sanitizer is not None:
+            # Strip markdown / *stage directions* the prompt bans but the model emits anyway.
+            cleaned = self._text_sanitizer.feed(cleaned)
         if not cleaned:
-            # Filter consumed a partial tag — no visible output yet. Wait for more.
+            # Filter consumed a partial tag/construct — no visible output yet. Wait for more.
             return
 
         if self._needs_new_assistant_entry:
@@ -283,13 +288,16 @@ class OrchestrationMixin:
             self._send_envelope(T_AVATAR_SET_STATUS, {"text": s.current_status})
 
         # Round just ended (LLM emitted tool_calls → tool ran). Flush any trailing
-        # buffered chars from the emotion filter into the still-current assistant
-        # entry, then push the tool_activity event as the next entry.
+        # buffered chars from the emotion filter (through the sanitizer) into the
+        # still-current assistant entry, then push the tool_activity event as the next entry.
         if self._text_filter is not None:
             tail = self._text_filter.flush()
+            if self._text_sanitizer is not None:
+                tail = self._text_sanitizer.feed(tail) + self._text_sanitizer.flush()
             if tail and not self._needs_new_assistant_entry:
                 self._push_append_token(tail)
             self._text_filter = None
+            self._text_sanitizer = None
 
         # Push the tool_activity event. The just-executed tool call lives on the most
         # recent assistant message in session.history (the one with tool_calls). Pull
@@ -301,13 +309,16 @@ class OrchestrationMixin:
         self._needs_new_assistant_entry = True
 
     def _on_orch_turn_complete(self, reply: StructuredReply) -> None:
-        # Flush any trailing buffered chars from the final round's filter into the
-        # active assistant entry — same reason as in _on_orch_executed_tool.
+        # Flush any trailing buffered chars from the final round's filter + sanitizer
+        # into the active assistant entry — same reason as in _on_orch_executed_tool.
         if self._text_filter is not None:
             tail = self._text_filter.flush()
+            if self._text_sanitizer is not None:
+                tail = self._text_sanitizer.feed(tail) + self._text_sanitizer.flush()
             if tail and not self._needs_new_assistant_entry:
                 self._push_append_token(tail)
             self._text_filter = None
+            self._text_sanitizer = None
 
     def _push_tool_activity_entry(self, session: ChatSession, etc) -> None:
         """Build and push the tool_activity entry for the tool that just finished.
