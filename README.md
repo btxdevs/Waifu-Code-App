@@ -49,8 +49,6 @@ The Unity player renders her in a transparent, always-on-top window — she stan
 - The coding agent is sandboxed to folders you allow, dangerous commands (`rm -rf /`, `curl | sh`, …) are hard-blocked, and everything else asks first.
 - Bring any OpenAI-compatible LLM: OpenAI, DeepSeek, OpenRouter, or a local server like LM Studio / Ollama.
 
-> 🔞 **A heads-up:** character behavior is entirely user-defined, and the default prompt template ([`system_prompt.txt`](system_prompt.txt)) is written for unrestricted adult roleplay. This project is intended for adults.
-
 ---
 
 # 🔧 The technical stuff
