@@ -7,7 +7,7 @@
   "initialAssistantMessage": "[Joy]There you are! Perfect timing, I was about to get bored. So — need something, or did you just miss me, nya?",
   "systemPromptTemplate": "",
   "initialEmotionLabel": "Joy",
-  "modelPath": "model_b99e3ecc8c693117.kkm",
+  "modelPath": "model_40c4a39b109c7a3c.kkm",
   "modelName": "Near.kkm",
   "availableEmotions": [
     "Anger",
